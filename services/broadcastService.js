@@ -4,6 +4,7 @@
  */
 const { supabase, openai } = require('./config');
 const { sendMessage, sendMessageWithImage } = require('./whatsappService');
+const { sendWebMessage, sendWebMessageWithMedia, getClientStatus } = require('./whatsappWebService');
 const { parseContactSheet } = require('./scheduleService');
 const chrono = require('chrono-node');
 const crypto = require('crypto');
@@ -34,6 +35,46 @@ const BroadcastLogger = {
         if (process.env.DEBUG_BROADCAST === '1') {
             console.log(`[BROADCAST][DEBUG] ${message}`, JSON.stringify(data));
         }
+    }
+};
+
+/**
+ * Smart message sender - tries WhatsApp Web first, falls back to Maytapi
+ */
+const sendMessageSmart = async (tenantId, phoneNumber, messageText, mediaUrl = null) => {
+    try {
+        // Check if WhatsApp Web is available for this tenant
+        const waWebStatus = getClientStatus(tenantId);
+        
+        if (waWebStatus.status === 'ready' && waWebStatus.hasClient) {
+            BroadcastLogger.info('Using WhatsApp Web for message', { tenantId, phoneNumber });
+            try {
+                if (mediaUrl) {
+                    await sendWebMessageWithMedia(tenantId, phoneNumber, messageText, mediaUrl);
+                } else {
+                    await sendWebMessage(tenantId, phoneNumber, messageText);
+                }
+                return { success: true, method: 'whatsapp-web' };
+            } catch (waWebError) {
+                BroadcastLogger.warn('WhatsApp Web failed, falling back to Maytapi', { 
+                    tenantId, 
+                    error: waWebError.message 
+                });
+            }
+        }
+        
+        // Fallback to Maytapi
+        BroadcastLogger.info('Using Maytapi for message', { tenantId, phoneNumber });
+        if (mediaUrl) {
+            await sendMessageWithImage(phoneNumber, messageText, mediaUrl);
+        } else {
+            await sendMessage(phoneNumber, messageText);
+        }
+        return { success: true, method: 'maytapi' };
+        
+    } catch (error) {
+        BroadcastLogger.error('All message sending methods failed', error, { tenantId, phoneNumber });
+        throw error;
     }
 };
 
@@ -369,11 +410,19 @@ const processBroadcastQueue = async () => {
                     hasMedia: !!mediaUrl
                 });
                 
-                if (mediaUrl) {
-                    await sendMessageWithImage(phoneNumber, messageText, mediaUrl);
-                } else {
-                    await sendMessage(phoneNumber, messageText);
-                }
+                // Use smart sender with tenant ID
+                const sendResult = await sendMessageSmart(
+                    message.tenant_id, 
+                    phoneNumber, 
+                    messageText, 
+                    mediaUrl
+                );
+                
+                BroadcastLogger.info('Message sent via ' + sendResult.method, {
+                    processId,
+                    messageId: message.id,
+                    method: sendResult.method
+                });
                 
                 // Mark as sent
                 await supabase
