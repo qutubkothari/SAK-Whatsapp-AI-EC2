@@ -2080,19 +2080,22 @@
                                 Recipients
                             </label>
                             
-                            <!-- Tab selector -->
-                            <div class="flex gap-2 mb-4">
+                            <!-- Tab selector - Mobile Optimized -->
+                            <div class="grid grid-cols-3 gap-2 mb-4">
                                 <button type="button" onclick="switchRecipientMode('paste')" id="recipientModePaste"
-                                    class="flex-1 px-3 py-2 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold text-sm">
-                                    <i class="fab fa-whatsapp mr-1"></i>Paste Numbers
+                                    class="px-2 py-3 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold text-xs md:text-sm hover:shadow-md transition">
+                                    <i class="fab fa-whatsapp block md:inline text-lg md:text-base mb-1 md:mb-0 md:mr-1"></i>
+                                    <span class="block md:inline">Paste</span>
                                 </button>
                                 <button type="button" onclick="switchRecipientMode('upload')" id="recipientModeUpload"
-                                    class="flex-1 px-3 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50 text-sm">
-                                    <i class="fas fa-upload mr-1"></i>Upload Excel
+                                    class="px-2 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50 text-xs md:text-sm hover:shadow-md transition">
+                                    <i class="fas fa-upload block md:inline text-lg md:text-base mb-1 md:mb-0 md:mr-1"></i>
+                                    <span class="block md:inline">Upload</span>
                                 </button>
                                 <button type="button" onclick="switchRecipientMode('groups')" id="recipientModeGroups"
-                                    class="flex-1 px-3 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50 text-sm">
-                                    <i class="fas fa-users mr-1"></i>Saved Groups
+                                    class="px-2 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50 text-xs md:text-sm hover:shadow-md transition">
+                                    <i class="fas fa-users block md:inline text-lg md:text-base mb-1 md:mb-0 md:mr-1"></i>
+                                    <span class="block md:inline">Groups</span>
                                 </button>
                             </div>
 
@@ -2262,17 +2265,33 @@
                         <!-- Image Upload (hidden by default) -->
                         <div id="imageUploadSection" class="hidden">
                             <label class="block text-sm font-semibold text-gray-700 mb-2">
-                                Upload Image
+                                <i class="fas fa-image mr-2"></i>Upload Image
                             </label>
                             <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition">
-                                <input type="file" id="broadcastImage" accept="image/*" 
+                                <input type="file" id="broadcastImage" accept="image/*" capture="environment"
                                     class="hidden" onchange="handleImageUpload(event)">
                                 <label for="broadcastImage" class="cursor-pointer">
-                                    <i class="fas fa-image text-4xl text-gray-400 mb-2"></i>
-                                    <p class="text-sm text-gray-600">Click to upload image</p>
+                                    <div class="flex flex-col md:flex-row items-center justify-center gap-3">
+                                        <div class="text-center">
+                                            <i class="fas fa-camera text-4xl text-indigo-500 mb-2"></i>
+                                            <p class="text-sm font-semibold text-gray-700">Take Photo</p>
+                                        </div>
+                                        <span class="hidden md:inline text-2xl text-gray-300">or</span>
+                                        <div class="text-center">
+                                            <i class="fas fa-image text-4xl text-purple-500 mb-2"></i>
+                                            <p class="text-sm font-semibold text-gray-700">Choose from Gallery</p>
+                                        </div>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-3">
+                                        <i class="fas fa-mobile-alt mr-1"></i>On mobile: Camera opens automatically
+                                    </p>
                                 </label>
-                                <div id="imagePreview" class="mt-3 hidden">
-                                    <img id="previewImg" class="max-h-48 mx-auto rounded-lg" alt="Preview">
+                                <div id="imagePreview" class="mt-4 hidden">
+                                    <img id="previewImg" class="max-h-64 w-auto mx-auto rounded-lg shadow-lg border-2 border-green-200" alt="Preview">
+                                    <button type="button" onclick="removeImage()" 
+                                        class="mt-3 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm">
+                                        <i class="fas fa-trash mr-2"></i>Remove Image
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -2356,11 +2375,11 @@
                             </div>
                         </div>
 
-                        <!-- Submit Button -->
-                        <div class="flex gap-4">
+                        <!-- Submit Button - Mobile Optimized -->
+                        <div class="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur -mx-8 px-8 py-4 border-t-2 border-gray-200 md:static md:bg-transparent md:backdrop-blur-none md:mx-0 md:px-0 md:py-0 md:border-0">
                             <button type="submit" 
-                                class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 px-6 rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-lg">
-                                <i class="fas fa-paper-plane mr-2"></i>
+                                class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 px-6 rounded-xl font-bold text-lg hover:from-indigo-700 hover:to-purple-700 transition shadow-2xl active:scale-95 transform">
+                                <i class="fas fa-paper-plane mr-2 text-xl"></i>
                                 <span id="submitButtonText">Send Broadcast Now</span>
                             </button>
                         </div>
@@ -2885,9 +2904,9 @@
         const pasteMode = document.getElementById('pasteMode');
         const groupsMode = document.getElementById('groupsMode');
 
-        // Reset all buttons
-        const inactiveClass = 'flex-1 px-3 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50 text-sm';
-        const activeClass = 'flex-1 px-3 py-2 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold text-sm';
+        // Reset all buttons with mobile-responsive classes
+        const inactiveClass = 'px-2 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50 text-xs md:text-sm hover:shadow-md transition';
+        const activeClass = 'px-2 py-3 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold text-xs md:text-sm hover:shadow-md transition';
 
         uploadBtn.className = inactiveClass;
         pasteBtn.className = inactiveClass;
@@ -3112,14 +3131,27 @@
         const file = event.target.files[0];
         if (!file) return;
 
+        // Check file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            showNotification('❌ Image too large! Please use an image under 5MB', 'error');
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = function(e) {
             uploadedImageBase64 = e.target.result;
             document.getElementById('previewImg').src = uploadedImageBase64;
             document.getElementById('imagePreview').classList.remove('hidden');
-            showNotification('Image uploaded successfully', 'success');
+            showNotification('✅ Image uploaded successfully!', 'success');
         };
         reader.readAsDataURL(file);
+    }
+
+    function removeImage() {
+        uploadedImageBase64 = null;
+        document.getElementById('broadcastImage').value = '';
+        document.getElementById('imagePreview').classList.add('hidden');
+        showNotification('Image removed', 'info');
     }
 
     function toggleMessageType() {
