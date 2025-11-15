@@ -75,20 +75,31 @@ async function initializeClient(tenantId) {
             clientStatus.set(tenantId, 'ready');
             qrCodes.delete(tenantId);
             
-            // Get connected phone number
-            const info = client.info;
-            
-            // Update database
-            await supabase
-                .from('whatsapp_connections')
-                .upsert({
-                    tenant_id: tenantId,
-                    phone_number: info.wid.user,
-                    status: 'connected',
-                    qr_code: null,
-                    connected_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                });
+            try {
+                // Get connected phone number
+                const info = client.info;
+                console.log(`[WA_WEB] Phone info:`, info.wid.user);
+                
+                // Update database
+                const { data, error } = await supabase
+                    .from('whatsapp_connections')
+                    .upsert({
+                        tenant_id: tenantId,
+                        phone_number: info.wid.user,
+                        status: 'connected',
+                        qr_code: null,
+                        connected_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
+                
+                if (error) {
+                    console.error(`[WA_WEB] Database update error for tenant ${tenantId}:`, error);
+                } else {
+                    console.log(`[WA_WEB] Database updated successfully for tenant ${tenantId}`);
+                }
+            } catch (err) {
+                console.error(`[WA_WEB] Error in ready handler for tenant ${tenantId}:`, err);
+            }
         });
 
         // Authenticated event
