@@ -2077,28 +2077,56 @@
                         <!-- Recipients Upload -->
                         <div>
                             <label class="block text-sm font-semibold text-gray-700 mb-2">
-                                Upload Recipients Excel
+                                Recipients
                             </label>
-                            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition">
-                                <input type="file" id="recipientsFile" accept=".xlsx,.xls,.csv" 
-                                    class="hidden" onchange="handleFileUpload(event)">
-                                <label for="recipientsFile" class="cursor-pointer">
-                                    <i class="fas fa-file-excel text-4xl text-gray-400 mb-2"></i>
-                                    <p class="text-sm text-gray-600">Click to upload Excel file</p>
-                                    <p class="text-xs text-gray-500 mt-1">Excel should have a "phone" or "number" column</p>
-                                </label>
-                                <div id="fileInfo" class="mt-3 text-sm text-green-600 hidden"></div>
-                            </div>
                             
-                            <!-- Recipients List -->
-                            <div id="recipientsList" class="hidden mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-h-48 overflow-y-auto">
-                                <div class="flex justify-between items-center mb-2">
-                                    <span class="text-sm font-semibold text-gray-700">Loaded Numbers:</span>
-                                    <button onclick="clearRecipients()" class="text-xs text-red-600 hover:text-red-700">
-                                        <i class="fas fa-times-circle"></i> Clear
-                                    </button>
+                            <!-- Tab selector -->
+                            <div class="flex gap-2 mb-4">
+                                <button type="button" onclick="switchRecipientMode('upload')" id="recipientModeUpload"
+                                    class="flex-1 px-4 py-2 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold">
+                                    <i class="fas fa-upload mr-2"></i>Upload Excel
+                                </button>
+                                <button type="button" onclick="switchRecipientMode('groups')" id="recipientModeGroups"
+                                    class="flex-1 px-4 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50">
+                                    <i class="fas fa-users mr-2"></i>Saved Groups
+                                </button>
+                            </div>
+
+                            <!-- Upload Mode -->
+                            <div id="uploadMode">
+                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition">
+                                    <input type="file" id="recipientsFile" accept=".xlsx,.xls,.csv" 
+                                        class="hidden" onchange="handleFileUpload(event)">
+                                    <label for="recipientsFile" class="cursor-pointer">
+                                        <i class="fas fa-file-excel text-4xl text-gray-400 mb-2"></i>
+                                        <p class="text-sm text-gray-600">Click to upload Excel file</p>
+                                        <p class="text-xs text-gray-500 mt-1">Excel should have a "phone" or "number" column</p>
+                                    </label>
+                                    <div id="fileInfo" class="mt-3 text-sm text-green-600 hidden"></div>
                                 </div>
-                                <div id="recipientsNumbers" class="text-xs text-gray-600 space-y-1"></div>
+                                
+                                <!-- Recipients List -->
+                                <div id="recipientsList" class="hidden mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-h-48 overflow-y-auto">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-sm font-semibold text-gray-700">Loaded Numbers:</span>
+                                        <div class="flex gap-2">
+                                            <button type="button" onclick="showSaveGroupDialog()" class="text-xs text-indigo-600 hover:text-indigo-700 font-semibold">
+                                                <i class="fas fa-save"></i> Save as Group
+                                            </button>
+                                            <button type="button" onclick="clearRecipients()" class="text-xs text-red-600 hover:text-red-700">
+                                                <i class="fas fa-times-circle"></i> Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="recipientsNumbers" class="text-xs text-gray-600 space-y-1"></div>
+                                </div>
+                            </div>
+
+                            <!-- Groups Mode -->
+                            <div id="groupsMode" class="hidden">
+                                <div id="contactGroupsList" class="space-y-2">
+                                    <p class="text-sm text-gray-500 text-center py-8">Loading groups...</p>
+                                </div>
                             </div>
                         </div>
 
@@ -2705,6 +2733,166 @@
         document.getElementById('fileInfo').classList.add('hidden');
         document.getElementById('recipientsList').classList.add('hidden');
         showNotification('Recipients cleared', 'info');
+    }
+
+    // Contact Groups Functions
+    let contactGroups = [];
+
+    function switchRecipientMode(mode) {
+        const uploadBtn = document.getElementById('recipientModeUpload');
+        const groupsBtn = document.getElementById('recipientModeGroups');
+        const uploadMode = document.getElementById('uploadMode');
+        const groupsMode = document.getElementById('groupsMode');
+
+        if (mode === 'upload') {
+            uploadBtn.className = 'flex-1 px-4 py-2 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold';
+            groupsBtn.className = 'flex-1 px-4 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50';
+            uploadMode.classList.remove('hidden');
+            groupsMode.classList.add('hidden');
+        } else {
+            uploadBtn.className = 'flex-1 px-4 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50';
+            groupsBtn.className = 'flex-1 px-4 py-2 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold';
+            uploadMode.classList.add('hidden');
+            groupsMode.classList.remove('hidden');
+            loadContactGroups();
+        }
+    }
+
+    async function loadContactGroups() {
+        const tenantId = state.session?.tenantId;
+        if (!tenantId) return;
+
+        try {
+            const response = await fetch(`/api/broadcast/groups/${tenantId}`);
+            const result = await response.json();
+
+            if (result.success) {
+                contactGroups = result.groups || [];
+                renderContactGroups();
+            }
+        } catch (error) {
+            console.error('Error loading contact groups:', error);
+            showNotification('Error loading contact groups', 'error');
+        }
+    }
+
+    function renderContactGroups() {
+        const container = document.getElementById('contactGroupsList');
+        
+        if (contactGroups.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="fas fa-users text-gray-300 text-4xl mb-3"></i>
+                    <p class="text-gray-500">No saved groups yet</p>
+                    <p class="text-xs text-gray-400 mt-2">Upload contacts and save them as a group for quick reuse</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = contactGroups.map(group => `
+            <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition">
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center cursor-pointer flex-1">
+                        <input type="checkbox" onchange="toggleGroupSelection('${group.id}')" 
+                            class="w-5 h-5 text-indigo-600 rounded mr-3">
+                        <div class="flex-1">
+                            <p class="font-semibold text-gray-800">${escapeHtml(group.group_name)}</p>
+                            <p class="text-xs text-gray-500">
+                                <i class="fas fa-users mr-1"></i>${group.contact_count} contacts
+                                <span class="mx-2">•</span>
+                                <i class="fas fa-clock mr-1"></i>${new Date(group.created_at).toLocaleDateString()}
+                            </p>
+                        </div>
+                    </label>
+                    <button type="button" onclick="deleteGroup('${group.id}')" 
+                        class="ml-2 text-red-500 hover:text-red-700 p-2">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function toggleGroupSelection(groupId) {
+        const group = contactGroups.find(g => g.id === groupId);
+        if (!group) return;
+
+        const checkbox = event.target;
+        
+        if (checkbox.checked) {
+            // Add contacts from this group
+            const newContacts = group.contacts.filter(c => !uploadedRecipients.includes(c));
+            uploadedRecipients.push(...newContacts);
+            showNotification(`Added ${group.contact_count} contacts from ${group.group_name}`, 'success');
+        } else {
+            // Remove contacts from this group
+            uploadedRecipients = uploadedRecipients.filter(c => !group.contacts.includes(c));
+            showNotification(`Removed ${group.group_name} contacts`, 'info');
+        }
+    }
+
+    function showSaveGroupDialog() {
+        if (uploadedRecipients.length === 0) {
+            showNotification('No recipients loaded to save', 'error');
+            return;
+        }
+
+        const groupName = prompt(`Save ${uploadedRecipients.length} contacts as a group\n\nEnter group name (e.g., "iPhone Contacts", "Sales Team"):`);
+        if (!groupName || !groupName.trim()) return;
+
+        saveContactGroup(groupName.trim());
+    }
+
+    async function saveContactGroup(groupName) {
+        const tenantId = state.session?.tenantId;
+        if (!tenantId) return;
+
+        try {
+            const response = await fetch('/api/broadcast/groups/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenantId,
+                    groupName,
+                    contacts: uploadedRecipients
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification(`✅ Group "${groupName}" saved with ${uploadedRecipients.length} contacts`, 'success');
+                loadContactGroups(); // Refresh the list
+            } else {
+                showNotification(result.error || 'Failed to save group', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving group:', error);
+            showNotification('Error saving contact group', 'error');
+        }
+    }
+
+    async function deleteGroup(groupId) {
+        if (!confirm('Are you sure you want to delete this contact group?')) return;
+
+        try {
+            const response = await fetch(`/api/broadcast/groups/${groupId}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification('Group deleted successfully', 'success');
+                loadContactGroups(); // Refresh the list
+            } else {
+                showNotification('Failed to delete group', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting group:', error);
+            showNotification('Error deleting group', 'error');
+        }
     }
 
     function handleImageUpload(event) {

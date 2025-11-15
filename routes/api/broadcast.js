@@ -252,4 +252,118 @@ router.get('/history/:tenantId', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/broadcast/groups/save
+ * Save a contact group for reuse
+ */
+router.post('/groups/save', async (req, res) => {
+    try {
+        const { tenantId, groupName, contacts } = req.body;
+
+        if (!tenantId || !groupName || !contacts || contacts.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: tenantId, groupName, contacts'
+            });
+        }
+
+        // Check if group name already exists for this tenant
+        const { data: existing } = await supabase
+            .from('contact_groups')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('group_name', groupName)
+            .single();
+
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                error: 'A group with this name already exists. Please choose a different name.'
+            });
+        }
+
+        // Save the group
+        const { data: group, error } = await supabase
+            .from('contact_groups')
+            .insert({
+                tenant_id: tenantId,
+                group_name: groupName,
+                contacts: contacts,
+                contact_count: contacts.length
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            group: group
+        });
+    } catch (error) {
+        console.error('[BROADCAST_API] Error saving contact group:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to save contact group'
+        });
+    }
+});
+
+/**
+ * GET /api/broadcast/groups/:tenantId
+ * Get all contact groups for a tenant
+ */
+router.get('/groups/:tenantId', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+
+        const { data: groups, error } = await supabase
+            .from('contact_groups')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            groups: groups || []
+        });
+    } catch (error) {
+        console.error('[BROADCAST_API] Error fetching contact groups:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch contact groups'
+        });
+    }
+});
+
+/**
+ * DELETE /api/broadcast/groups/:groupId
+ * Delete a contact group
+ */
+router.delete('/groups/:groupId', async (req, res) => {
+    try {
+        const { groupId } = req.params;
+
+        const { error } = await supabase
+            .from('contact_groups')
+            .delete()
+            .eq('id', groupId);
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            message: 'Group deleted successfully'
+        });
+    } catch (error) {
+        console.error('[BROADCAST_API] Error deleting contact group:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to delete contact group'
+        });
+    }
+});
+
 module.exports = router;
