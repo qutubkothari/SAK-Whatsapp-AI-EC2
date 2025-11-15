@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WhatsApp Web QR Code</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 40px; }
+    #qr { margin-top: 20px; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+  <h2>Scan this QR code with WhatsApp</h2>
+  <div id="qr">Loading QR code...</div>
+  <script>
+    // Get tenant from query string
+    const params = new URLSearchParams(window.location.search);
+    const tenant = params.get('tenant');
+    if (!tenant) {
+      document.getElementById('qr').innerHTML = '<span class="error">Missing tenant ID in URL.</span>';
+    } else {
+      fetch(`/api/whatsapp-web/qr/${tenant}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.qrCode) {
+            document.getElementById('qr').innerHTML = `<img src="${data.qrCode}" alt="WhatsApp QR Code" style="width:320px;height:320px;" />`;
+          } else {
+            document.getElementById('qr').innerHTML = '<span class="error">QR code not available. Try restarting the service.</span>';
+          }
+        })
+        .catch(() => {
+          document.getElementById('qr').innerHTML = '<span class="error">Failed to load QR code.</span>';
+        });
+    }
+  </script>
+</body>
+</html>
