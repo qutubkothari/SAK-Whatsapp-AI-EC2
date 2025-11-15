@@ -1,0 +1,100 @@
+2025-10-28 07:00:00 default[auto-deploy-20251028-103809]  ? [Enhanced Follow-up Scheduler (Debug)] completed successfully in 281ms
+2025-10-28 07:00:00 default[auto-deploy-20251028-103809]  --- [HIGH] Running: Abandoned Cart Recovery ---
+2025-10-28 07:00:00 default[auto-deploy-20251028-103809]      Description: Recover abandoned carts with personalized messages
+2025-10-28 07:00:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"27ae1314","reason":"cooldown_expired"}
+2025-10-28 07:00:00 default[auto-deploy-20251028-103809]  Checking for abandoned carts for 1 tenant(s)...
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"27ae1314"}
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  ? [Abandoned Cart Recovery] completed successfully in 473ms
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  --- [HIGH] Running: Smart Reorder Reminders ---
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]      Description: Predictive reorder reminders based on purchase patterns
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"27ae1314"}
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  [PROACTIVE] Processing tenant: sak solutions store (a10aa26a-b5f9-4afe-87cc-70bfb4d1f6e6)
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  [PROACTIVE] Starting daily proactive messaging run...
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  [PROACTIVE] Analyzing 1 customers...
+2025-10-28 07:00:01 default[auto-deploy-20251028-103809]  [FREQUENCY] Analyzing for customer: a44c0f75-e0f7-457c-9dd4-6dec63c3858b
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  [FREQUENCY] Found customer: JUMMANA Zoho ID: 984865000000063646
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  [FREQUENCY] Found 0 orders
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  [FREQUENCY] Not enough orders for frequency analysis
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  [PROACTIVE] Run complete: { customersAnalyzed: 1, messagesScheduled: 0, customersSkipped: 1 }
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  [PROACTIVE] Total messages scheduled: 0
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  ? [Smart Reorder Reminders] completed successfully in 1617ms
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  --- [HIGH] Running: Send Scheduled Reorder Messages ---
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]      Description: Send pending proactive messages to customers
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  [PROACTIVE] Sending pending messages for: sak solutions store (a10aa26a-b5f9-4afe-87cc-70bfb4d1f6e6)
+2025-10-28 07:00:02 default[auto-deploy-20251028-103809]  [PROACTIVE] Checking for pending messages to send...
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  [PROACTIVE] Error fetching pending messages: {
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    code: '42703',
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    details: null,
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    hint: null,
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    message: 'column proactive_messages.status does not exist'
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  }
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  [PROACTIVE] Processed 1 tenants for message delivery
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  ? [Send Scheduled Reorder Messages] completed successfully in 446ms
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  --- [HIGH] Running: Drip Campaigns ---
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]      Description: Sequential automated marketing campaigns
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  ? [Drip Campaigns] completed successfully in 219ms
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  [2025-10-28T07:00:03.362Z] Scheduled tasks completed: {
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    "timestamp": "2025-10-28T07:00:03.362Z",
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    "duration": "3348ms",
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    "tasks": {
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]      "total": 6,
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]      "successful": 6,
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]      "failed": 0,
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]      "successRate": "100%"
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    },
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]    "errors": []
+2025-10-28 07:00:03 default[auto-deploy-20251028-103809]  }
+2025-10-28 07:01:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:01:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"9d5a02d2","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:01:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"9d5a02d2"}
+2025-10-28 07:01:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"9d5a02d2","reason":"cooldown_expired"}
+2025-10-28 07:01:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"9d5a02d2"}
+2025-10-28 07:01:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"9d5a02d2"}
+2025-10-28 07:02:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:02:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"05186597","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:02:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"05186597"}
+2025-10-28 07:02:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"05186597","reason":"cooldown_expired"}
+2025-10-28 07:02:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"05186597"}
+2025-10-28 07:02:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"05186597"}
+2025-10-28 07:03:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:03:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"c200811e","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:03:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"c200811e"}
+2025-10-28 07:03:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"c200811e","reason":"cooldown_expired"}
+2025-10-28 07:03:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"c200811e"}
+2025-10-28 07:03:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"c200811e"}
+2025-10-28 07:04:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:04:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"a4c4b067","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:04:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"a4c4b067"}
+2025-10-28 07:04:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"a4c4b067","reason":"cooldown_expired"}
+2025-10-28 07:04:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"a4c4b067"}
+2025-10-28 07:04:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"a4c4b067"}
+2025-10-28 07:05:00 default[auto-deploy-20251028-103809]  [FOLLOWUP_CRON] Running scheduled follow-up check...
+2025-10-28 07:05:00 default[auto-deploy-20251028-103809]  [FOLLOWUP_PROCESSOR] Checking for follow-ups due before: 2025-10-28T07:10:00.013Z
+2025-10-28 07:05:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:05:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"ab5b9e47","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:05:00 default[auto-deploy-20251028-103809]  [FOLLOWUP_PROCESSOR] No follow-ups due
+2025-10-28 07:05:00 default[auto-deploy-20251028-103809]  [FOLLOWUP_CRON] Follow-up check completed successfully
+2025-10-28 07:05:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"ab5b9e47"}
+2025-10-28 07:05:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"ab5b9e47","reason":"cooldown_expired"}
+2025-10-28 07:05:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"ab5b9e47"}
+2025-10-28 07:05:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"ab5b9e47"}
+2025-10-28 07:06:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:06:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"652e4658","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:06:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"652e4658"}
+2025-10-28 07:06:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"652e4658","reason":"cooldown_expired"}
+2025-10-28 07:06:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"652e4658"}
+2025-10-28 07:06:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"652e4658"}
+2025-10-28 07:07:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:07:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"8b27317c","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:07:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"8b27317c"}
+2025-10-28 07:07:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"8b27317c","reason":"cooldown_expired"}
+2025-10-28 07:07:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"8b27317c"}
+2025-10-28 07:07:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"8b27317c"}
+2025-10-28 07:08:00 default[auto-deploy-20251028-103809]  [CRON] Starting broadcast queue processing...
+2025-10-28 07:08:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Attempting to start queue processing {"processId":"69fe4265","batchSize":5,"cooldownMinutes":1}
+2025-10-28 07:08:00 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock acquired successfully {"processId":"69fe4265"}
+2025-10-28 07:08:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Cooldown check passed, starting batch processing {"processId":"69fe4265","reason":"cooldown_expired"}
+2025-10-28 07:08:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] No pending messages to process {"processId":"69fe4265"}
+2025-10-28 07:08:01 default[auto-deploy-20251028-103809]  [BROADCAST][INFO] Lock released successfully {"processId":"69fe4265"}
+2025-10-28 07:08:40 default[auto-deploy-20251028-103809]  SIGTERM received, shutting down gracefully
+2025-10-28 07:08:40 default[auto-deploy-20251028-103809]  Process terminated

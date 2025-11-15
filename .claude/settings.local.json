@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m \"$(cat <<''EOF''\nFIX: Add ignorePriceOverride option to prevent automatic discounted prices\n\nIssue: Cart displayed ₹2304.6/carton instead of catalog ₹2,505, even after\ndatabase cleanup. The pricing service was using carton_price_override from\ncart items passed to it.\n\nRoot Cause:\n1. viewCartWithDiscounts fetches cart items WITH carton_price_override\n2. Clears from database, but still passes OLD validItems to pricing service\n3. pricingService automatically uses carton_price_override if it exists\n4. Result: Old discounted prices still display\n\nFix:\nAdded ignorePriceOverride option to pricingService.js:\n- When TRUE, pricing service ignores carton_price_override completely\n- Uses catalog or last_purchase price instead\n- Lines 154-177: Updated price selection logic\n\nUpdated cartService.js line 756:\n- Pass ignorePriceOverride: true when negotiatedDiscountPercent === 0\n- Ensures catalog prices shown when no discount approved\n\nFlow:\n- No approved discount → ignorePriceOverride=true → uses catalog ₹2,505\n- Approved discount exists → ignorePriceOverride=false → can use carton_price_override\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(node check_cart_db.js:*)",
+      "Bash(node check_discount_context.js:*)",
+      "Bash(psql:*)",
+      "Bash(node check_product_schema.js:*)",
+      "Bash(node test_discount_fix.js:*)",
+      "Bash(pm2 logs:*)",
+      "Bash(node test_complete_discount_flow.js:*)",
+      "Bash(node simulate_discount_message.js:*)",
+      "Bash(node -e:*)",
+      "Bash(node test_exact_discount_handler_flow.js:*)",
+      "Bash(gcloud --version:*)",
+      "Bash(gcloud config:*)",
+      "Bash(gcloud app describe:*)",
+      "Bash(gcloud projects list:*)",
+      "Bash(gcloud app services list:*)",
+      "Bash(gcloud app deploy:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

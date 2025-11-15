@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Management - WhatsApp AI Sales Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .stat-card {
+            transition: transform 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-trial { background: #fef3c7; color: #92400e; }
+        .badge-active { background: #d1fae5; color: #065f46; }
+        .badge-expired { background: #fee2e2; color: #991b1b; }
+        .badge-inactive { background: #e5e7eb; color: #374151; }
+        
+        .tier-free { border-left: 4px solid #9ca3af; }
+        .tier-standard { border-left: 4px solid #3b82f6; }
+        .tier-premium { border-left: 4px solid #8b5cf6; }
+        .tier-enterprise { border-left: 4px solid #f59e0b; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">Client Management</h1>
+                        <p class="text-sm text-gray-600 mt-1">Manage tenants, subscriptions, and account status</p>
+                    </div>
+                    <button onclick="showRegisterModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                        <i class="fas fa-plus"></i>
+                        Register New Client
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Stats Overview -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="stat-card bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-600">Total Clients</p>
+                            <p class="text-3xl font-bold text-gray-900 mt-1" id="totalClients">0</p>
+                        </div>
+                        <div class="bg-blue-100 p-3 rounded-lg">
+                            <i class="fas fa-users text-blue-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-600">Active Subscriptions</p>
+                            <p class="text-3xl font-bold text-green-600 mt-1" id="activeSubscriptions">0</p>
+                        </div>
+                        <div class="bg-green-100 p-3 rounded-lg">
+                            <i class="fas fa-check-circle text-green-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-600">Trial Accounts</p>
+                            <p class="text-3xl font-bold text-yellow-600 mt-1" id="trialAccounts">0</p>
+                        </div>
+                        <div class="bg-yellow-100 p-3 rounded-lg">
+                            <i class="fas fa-clock text-yellow-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-600">Expired/Inactive</p>
+                            <p class="text-3xl font-bold text-red-600 mt-1" id="inactiveAccounts">0</p>
+                        </div>
+                        <div class="bg-red-100 p-3 rounded-lg">
+                            <i class="fas fa-exclamation-circle text-red-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="bg-white rounded-lg shadow p-4 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <select id="filterStatus" class="border rounded-lg px-3 py-2" onchange="loadTenants()">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+
+                    <select id="filterSubscriptionTier" class="border rounded-lg px-3 py-2" onchange="loadTenants()">
+                        <option value="">All Tiers</option>
+                        <option value="free">Free Trial</option>
+                        <option value="standard">Standard</option>
+                        <option value="premium">Premium</option>
+                        <option value="enterprise">Enterprise</option>
+                    </select>
+
+                    <select id="filterSubscriptionStatus" class="border rounded-lg px-3 py-2" onchange="loadTenants()">
+                        <option value="">All Subscriptions</option>
+                        <option value="trial">Trial</option>
+                        <option value="active">Active</option>
+                        <option value="expired">Expired</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+
+                    <button onclick="loadTenants()" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg flex items-center justify-center gap-2">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Clients List -->
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">All Clients</h2>
+                </div>
+                <div id="clientsList" class="divide-y divide-gray-200">
+                    <div class="px-6 py-12 text-center text-gray-500">
+                        <i class="fas fa-spinner fa-spin text-3xl mb-4"></i>
+                        <p>Loading clients...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="registerModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xl font-bold text-gray-900">Register New Client</h2>
+                    <button onclick="hideRegisterModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <form id="registerForm" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Business Name *</label>
+                    <input type="text" name="business_name" required class="w-full border rounded-lg px-3 py-2" placeholder="ABC Company Ltd">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">WhatsApp Number *</label>
+                        <input type="text" name="owner_whatsapp_number" required class="w-full border rounded-lg px-3 py-2" placeholder="919876543210">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                        <input type="text" name="phone_number" class="w-full border rounded-lg px-3 py-2" placeholder="Optional">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Business Address</label>
+                    <textarea name="business_address" rows="2" class="w-full border rounded-lg px-3 py-2" placeholder="123 Street, City, State"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Business Website</label>
+                    <input type="url" name="business_website" class="w-full border rounded-lg px-3 py-2" placeholder="https://example.com">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Industry Type</label>
+                        <select name="industry_type" class="w-full border rounded-lg px-3 py-2">
+                            <option value="">Select Industry</option>
+                            <option value="manufacturing">Manufacturing</option>
+                            <option value="retail">Retail</option>
+                            <option value="wholesale">Wholesale</option>
+                            <option value="services">Services</option>
+                            <option value="ecommerce">E-commerce</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Bot Language</label>
+                        <select name="bot_language" class="w-full border rounded-lg px-3 py-2">
+                            <option value="English">English</option>
+                            <option value="Hinglish">Hinglish</option>
+                            <option value="Hindi">Hindi</option>
+                            <option value="Arabic">Arabic</option>
+                            <option value="Spanish">Spanish</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Subscription Tier</label>
+                    <select name="subscription_tier" class="w-full border rounded-lg px-3 py-2">
+                        <option value="standard">Standard - ₹2,999/month</option>
+                        <option value="premium">Premium - ₹9,999/month</option>
+                        <option value="enterprise">Enterprise - ₹29,999/month</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">7-day free trial included</p>
+                </div>
+
+                <div class="flex gap-3 pt-4">
+                    <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">
+                        Register Client
+                    </button>
+                    <button type="button" onclick="hideRegisterModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Client Details Modal -->
+    <div id="detailsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xl font-bold text-gray-900" id="detailsTitle">Client Details</h2>
+                    <button onclick="hideDetailsModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="detailsContent" class="p-6">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTenant = null;
+
+        // Load tenants on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadTenants();
+        });
+
+        async function loadTenants() {
+            try {
+                const status = document.getElementById('filterStatus').value;
+                const tier = document.getElementById('filterSubscriptionTier').value;
+                const subStatus = document.getElementById('filterSubscriptionStatus').value;
+
+                const params = new URLSearchParams();
+                if (status) params.append('status', status);
+                if (tier) params.append('subscription_tier', tier);
+                if (subStatus) params.append('subscription_status', subStatus);
+
+                const response = await fetch(`/api/tenants?${params.toString()}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    renderTenants(data.tenants);
+                    updateStats(data.tenants);
+                } else {
+                    showError('Failed to load tenants');
+                }
+            } catch (error) {
+                console.error('Error loading tenants:', error);
+                showError('Error loading tenants: ' + error.message);
+            }
+        }
+
+        function renderTenants(tenants) {
+            const container = document.getElementById('clientsList');
+            
+            if (tenants.length === 0) {
+                container.innerHTML = `
+                    <div class="px-6 py-12 text-center text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-4"></i>
+                        <p>No clients found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = tenants.map(tenant => {
+                const statusBadge = getStatusBadge(tenant.subscription_status);
+                const tierClass = `tier-${tenant.subscription_tier}`;
+                const trialDays = getTrialDaysRemaining(tenant.trial_ends_at);
+
+                return `
+                    <div class="p-6 hover:bg-gray-50 cursor-pointer ${tierClass}" onclick="showTenantDetails('${tenant.id}')">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <h3 class="text-lg font-semibold text-gray-900">${tenant.business_name || 'Unnamed Business'}</h3>
+                                    ${statusBadge}
+                                    <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium uppercase">
+                                        ${tenant.subscription_tier}
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-4 text-sm text-gray-600">
+                                    <span><i class="fas fa-phone mr-1"></i>${tenant.owner_whatsapp_number}</span>
+                                    <span><i class="fas fa-calendar mr-1"></i>Joined ${formatDate(tenant.created_at)}</span>
+                                    ${trialDays !== null ? `<span class="text-yellow-600"><i class="fas fa-clock mr-1"></i>${trialDays} days trial left</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button onclick="event.stopPropagation(); manageSub scription('${tenant.id}')" class="text-blue-600 hover:text-blue-800 px-3 py-1 border border-blue-200 rounded-lg text-sm">
+                                    <i class="fas fa-edit mr-1"></i>Manage
+                                </button>
+                                <i class="fas fa-chevron-right text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateStats(tenants) {
+            const total = tenants.length;
+            const active = tenants.filter(t => t.subscription_status === 'active').length;
+            const trial = tenants.filter(t => t.subscription_status === 'trial').length;
+            const inactive = tenants.filter(t => t.subscription_status === 'expired' || t.subscription_status === 'cancelled' || !t.is_active).length;
+
+            document.getElementById('totalClients').textContent = total;
+            document.getElementById('activeSubscriptions').textContent = active;
+            document.getElementById('trialAccounts').textContent = trial;
+            document.getElementById('inactiveAccounts').textContent = inactive;
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                trial: '<span class="badge badge-trial"><i class="fas fa-flask mr-1"></i>Trial</span>',
+                active: '<span class="badge badge-active"><i class="fas fa-check-circle mr-1"></i>Active</span>',
+                expired: '<span class="badge badge-expired"><i class="fas fa-times-circle mr-1"></i>Expired</span>',
+                cancelled: '<span class="badge badge-inactive"><i class="fas fa-ban mr-1"></i>Cancelled</span>'
+            };
+            return badges[status] || '';
+        }
+
+        function getTrialDaysRemaining(trialEndsAt) {
+            if (!trialEndsAt) return null;
+            const now = new Date();
+            const endDate = new Date(trialEndsAt);
+            const diff = endDate - now;
+            const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            return days > 0 ? days : 0;
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        // Modal functions
+        function showRegisterModal() {
+            document.getElementById('registerModal').classList.remove('hidden');
+            document.getElementById('registerModal').classList.add('flex');
+        }
+
+        function hideRegisterModal() {
+            document.getElementById('registerModal').classList.add('hidden');
+            document.getElementById('registerModal').classList.remove('flex');
+            document.getElementById('registerForm').reset();
+        }
+
+        function showDetailsModal() {
+            document.getElementById('detailsModal').classList.remove('hidden');
+            document.getElementById('detailsModal').classList.add('flex');
+        }
+
+        function hideDetailsModal() {
+            document.getElementById('detailsModal').classList.add('hidden');
+            document.getElementById('detailsModal').classList.remove('flex');
+        }
+
+        // Register form submission
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/api/tenants/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess('Client registered successfully!');
+                    hideRegisterModal();
+                    loadTenants();
+                } else {
+                    showError(result.error || 'Registration failed');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Error registering client: ' + error.message);
+            }
+        });
+
+        async function showTenantDetails(tenantId) {
+            try {
+                const response = await fetch(`/api/tenants/${tenantId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const tenant = data.tenant;
+                    document.getElementById('detailsTitle').textContent = tenant.business_name || 'Client Details';
+                    
+                    const content = `
+                        <div class="space-y-6">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-sm font-medium text-gray-600">Business Name</label>
+                                    <p class="text-gray-900">${tenant.business_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium text-gray-600">WhatsApp Number</label>
+                                    <p class="text-gray-900">${tenant.owner_whatsapp_number}</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium text-gray-600">Subscription Tier</label>
+                                    <p class="text-gray-900 uppercase font-semibold">${tenant.subscription_tier}</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium text-gray-600">Subscription Status</label>
+                                    <p class="text-gray-900">${getStatusBadge(tenant.subscription_status)}</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium text-gray-600">Trial Ends</label>
+                                    <p class="text-gray-900">${tenant.trial_ends_at ? formatDate(tenant.trial_ends_at) : 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium text-gray-600">Created</label>
+                                    <p class="text-gray-900">${formatDate(tenant.created_at)}</p>
+                                </div>
+                            </div>
+
+                            <div class="border-t pt-4">
+                                <h3 class="font-semibold text-gray-900 mb-3">Usage Statistics</h3>
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div class="bg-blue-50 p-4 rounded-lg">
+                                        <p class="text-sm text-gray-600">Conversations (This Month)</p>
+                                        <p class="text-2xl font-bold text-blue-600">${tenant.stats.conversations_this_month}</p>
+                                        <p class="text-xs text-gray-500 mt-1">Limit: ${tenant.tier_config.max_conversations_per_month === -1 ? 'Unlimited' : tenant.tier_config.max_conversations_per_month}</p>
+                                    </div>
+                                    <div class="bg-green-50 p-4 rounded-lg">
+                                        <p class="text-sm text-gray-600">Total Customers</p>
+                                        <p class="text-2xl font-bold text-green-600">${tenant.stats.total_customers}</p>
+                                        <p class="text-xs text-gray-500 mt-1">Limit: ${tenant.tier_config.max_customers === -1 ? 'Unlimited' : tenant.tier_config.max_customers}</p>
+                                    </div>
+                                    <div class="bg-purple-50 p-4 rounded-lg">
+                                        <p class="text-sm text-gray-600">Total Products</p>
+                                        <p class="text-2xl font-bold text-purple-600">${tenant.stats.total_products}</p>
+                                        <p class="text-xs text-gray-500 mt-1">Limit: ${tenant.tier_config.max_products === -1 ? 'Unlimited' : tenant.tier_config.max_products}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t pt-4">
+                                <h3 class="font-semibold text-gray-900 mb-3">Subscription Actions</h3>
+                                <div class="flex gap-3">
+                                    <button onclick="upgradeSubscription('${tenant.id}')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+                                        <i class="fas fa-arrow-up mr-2"></i>Upgrade
+                                    </button>
+                                    <button onclick="extendTrial('${tenant.id}')" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg">
+                                        <i class="fas fa-clock mr-2"></i>Extend Trial
+                                    </button>
+                                    <button onclick="deactivateTenant('${tenant.id}')" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+                                        <i class="fas fa-ban mr-2"></i>Deactivate
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    document.getElementById('detailsContent').innerHTML = content;
+                    showDetailsModal();
+                } else {
+                    showError('Failed to load tenant details');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Error loading details: ' + error.message);
+            }
+        }
+
+        async function manageSubscription(tenantId) {
+            await showTenantDetails(tenantId);
+        }
+
+        async function upgradeSubscription(tenantId) {
+            const tier = prompt('Enter new tier (standard/premium/enterprise):');
+            if (!tier) return;
+
+            try {
+                const response = await fetch(`/api/tenants/${tenantId}/subscription`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subscription_tier: tier.toLowerCase(),
+                        subscription_status: 'active'
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showSuccess('Subscription upgraded successfully!');
+                    hideDetailsModal();
+                    loadTenants();
+                } else {
+                    showError(data.error || 'Upgrade failed');
+                }
+            } catch (error) {
+                showError('Error: ' + error.message);
+            }
+        }
+
+        async function extendTrial(tenantId) {
+            const days = prompt('Extend trial by how many days?', '7');
+            if (!days) return;
+
+            try {
+                // Calculate new trial end date
+                const newTrialEnd = new Date();
+                newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(days));
+
+                const response = await fetch(`/api/tenants/${tenantId}/subscription`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subscription_status: 'trial',
+                        subscription_end_date: newTrialEnd.toISOString()
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showSuccess(`Trial extended by ${days} days!`);
+                    hideDetailsModal();
+                    loadTenants();
+                } else {
+                    showError(data.error || 'Extension failed');
+                }
+            } catch (error) {
+                showError('Error: ' + error.message);
+            }
+        }
+
+        async function deactivateTenant(tenantId) {
+            if (!confirm('Are you sure you want to deactivate this tenant?')) return;
+
+            try {
+                const response = await fetch(`/api/tenants/${tenantId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: 'inactive',
+                        is_active: false
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showSuccess('Tenant deactivated successfully');
+                    hideDetailsModal();
+                    loadTenants();
+                } else {
+                    showError(data.error || 'Deactivation failed');
+                }
+            } catch (error) {
+                showError('Error: ' + error.message);
+            }
+        }
+
+        function showSuccess(message) {
+            alert('✅ ' + message);
+        }
+
+        function showError(message) {
+            alert('❌ ' + message);
+        }
+    </script>
+</body>
+</html>

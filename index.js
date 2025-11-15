@@ -1,0 +1,1193 @@
+// ...existing code...
+// --- Outbound send guard: digits-only, payload normalize, provider logging ---
+try {
+  const { initOutbound } = require('./services/outboundGuard');
+  initOutbound(); // digits-only, payload normalize, provider logging
+} catch (e) {
+  console.warn('[OUTBOUND] init failed', e?.message || e);
+}
+/**
+ * @title Main Server File (index.js)
+ * @description The main entry point for the WhatsApp AI Sales Assistant application.
+ * It initializes the Express server, sets up middleware, and connects the API routes.
+ */
+
+// Import necessary libraries
+const express = require('express');
+const bodyParser = require('body-parser');
+const path = require('path'); // For serving static files
+const cron = require('node-cron');
+const cors = require('cors');
+
+const app = express();
+
+// --- Serve Static Files for Web Dashboard ---
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Explicitly serve ai-dashboard.html for dashboard routes
+app.get('/ai-dashboard.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'ai-dashboard.html'));
+});
+
+// --- API Routes ---
+const aiAdminRoutes = require('./routes/api/aiAdmin');
+app.use('/api/ai-admin', aiAdminRoutes);
+app.use('/api/admin/ai-stats', aiAdminRoutes); // For dashboard compatibility
+
+// ADD: /api_new/customer route for direct customer message simulation/testing
+const customerHandler = require('./routes/handlers/customerHandler');
+console.log('[DEBUG] customerHandler exports:', Object.keys(customerHandler));
+app.post('/api_new/customer', async (req, res) => {
+  // Proxy to main customer handler
+  try {
+    await customerHandler.handleCustomerTextMessage(req, res);
+  } catch (err) {
+    console.error('[API_NEW_CUSTOMER] Error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- New: prefer built-in JSON as a fallback (keeps body-parser too)
+const useExpressJson = true;
+
+
+// Import routers
+const webhookRouter = require('./routes/webhook');
+const dashboardRouter = require('./routes/api/dashboard');
+let statusWebhookRouter, apiRouter;
+
+// Import broadcast queue processor
+const { processBroadcastQueue } = require('./services/broadcastService');
+
+// Import scheduler for automated tasks
+const { runScheduledTasks } = require('./scheduler');
+
+// Import monitoring dependencies
+const { supabase } = require('./services/config');
+
+try {
+  statusWebhookRouter = require('./routes/statusWebhook');
+} catch (err) {
+  console.error('[BOOT] Failed to load ./routes/statusWebhook.js:', err && err.message ? err.message : err);
+  statusWebhookRouter = express.Router().post('/update', (req, res) => res.status(200).json({ ok: true, note: 'fallback status webhook' }));
+}
+try {
+  apiRouter = require('./routes/api');
+} catch (err) {
+  console.error('[BOOT] Failed to load ./routes/api.js:', err && err.message ? err.message : err);
+  apiRouter = express.Router().post('/verify-magic-token', (req, res) => res.status(500).json({ error: 'API router failed to load' }));
+}
+
+const ordersRouter = require('./routes/api/orders');
+const gstRoutes = require('./routes/api/gst');
+const zohoRoutes = require('./routes/api/zoho');
+const customerRouter = require('./routes/api/customer');
+const websiteContentRouter = require('./routes/api/websiteContent');
+
+
+// --- Configuration ---
+// IMPORTANT: Use the PORT environment variable provided by Google App Engine.
+const PORT = Number(process.env.PORT) || 8081;
+
+// --- Server Initialization ---
+
+
+
+// Ensure realtime testing service is loaded globally (for status route)
+try {
+  if (!global.realtimeTestingService) {
+    const svc = require('./services/realtimeTestingService');
+    // If your module exposes an init(), call it; otherwise this is a no-op.
+    if (typeof svc.init === 'function') svc.init();
+    global.realtimeTestingService = svc;
+    console.log('[REALTIME] testing service loaded');
+  }
+} catch (e) {
+  console.warn('[REALTIME] load failed:', e?.message || e);
+}
+
+// Middleware setup
+app.use(express.json({ limit: '2mb' }));
+if (useExpressJson) {
+  app.use(bodyParser.json());
+}
+app.use(cors()); // Allow all origins for development
+// Or for production, be specific:
+// app.use(cors({ origin: 'http://localhost:8080' }));
+
+// ADDITIVE DEBUG WIRING
+try {
+  const dbg = require('./services/debug');
+  dbg.envSummary(); // prints masked envs when DEBUG_CONFIG=1
+
+  app.use((req, res, next) => {
+    req._rid = req._rid || dbg.rid();
+    if (process.env.DEBUG_WEBHOOK === '1') {
+      console.log(`[REQ][${req._rid}] ${req.method} ${req.originalUrl}`);
+      if (req.body) { try { console.log(`[REQ][${req._rid}] body`, JSON.stringify(req.body).slice(0, 2000)); } catch(_){} }
+      res.on('finish', () => console.log(`[RES][${req._rid}] ${res.statusCode}`));
+    }
+    next();
+  });
+} catch (e) {
+  console.error('[BOOT] debug wiring failed', e?.message || e);
+}
+
+// Lightweight request logger
+app.use((req, _res, next) => {
+  try {
+    console.log(`[REQ] ${req.method} ${req.url}`);
+  } catch (_) {}
+  next();
+});
+
+// --- Serve Static Files for Web Dashboard ---
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Explicitly serve dashboard.html for dashboard routes with no-cache headers
+app.get('/dashboard', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+app.get('/dashboard.html', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+// Enhanced dashboard
+app.get('/dashboard-enhanced.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'dashboard-enhanced.html'));
+});
+
+// --- API Routes ---
+// Serve landing page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// App Engine health probe path
+app.get('/_ah/health', (_req, res) => {
+  res.status(200).send('ok');
+});
+
+// Use the routers for their respective paths
+app.use('/webhook', webhookRouter);
+app.use('/status', statusWebhookRouter);
+app.use('/api', apiRouter);
+app.use('/api/dashboard', dashboardRouter);
+
+app.use('/api/orders', ordersRouter);
+app.use('/api', gstRoutes);
+app.use('/api/zoho', zohoRoutes);
+app.use('/api/customers', customerRouter);
+app.use('/api/dashboard', websiteContentRouter);
+
+// Tenant Management API
+const tenantsRouter = require('./routes/api/tenants');
+app.use('/api/tenants', tenantsRouter);
+
+// Discount Management API
+const discountsRouter = require('./routes/api/discounts');
+app.use('/api/discounts', discountsRouter);
+
+// Category Management API
+const categoriesRouter = require('./routes/api/categories');
+app.use('/api/categories', categoriesRouter);
+
+// Products Management API
+const productsRouter = require('./routes/api/products');
+app.use('/api/products', productsRouter);
+
+// Broadcast API
+const broadcastRouter = require('./routes/api/broadcast');
+app.use('/api/broadcast', broadcastRouter);
+
+// WhatsApp Web Standalone API (separate from existing Maytapi system)
+const whatsappWebRouter = require('./routes/api/whatsappWeb');
+app.use('/api/whatsapp-web', whatsappWebRouter);
+
+// Cron endpoint for processing broadcast queue
+app.get('/cron/process-broadcasts', async (req, res) => {
+  try {
+    await processBroadcastQueue();
+    res.status(200).send('Queue processed');
+  } catch (error) {
+    console.error('Cron error:', error);
+    res.status(500).send('Error processing queue');
+  }
+});
+
+// Health check endpoint with comprehensive system status
+app.get('/health', async (req, res) => {
+  const startTime = Date.now();
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    memory: process.memoryUsage(),
+    environment: process.env.NODE_ENV || 'development',
+    version: process.env.npm_package_version || '1.0.0',
+    services: {},
+    metrics: {}
+  };
+
+  try {
+    // Database health check
+    const dbStart = Date.now();
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('count(*)')
+      .limit(1);
+    
+    health.services.database = {
+      status: error ? 'unhealthy' : 'healthy',
+      responseTime: Date.now() - dbStart,
+      error: error?.message || null
+    };
+
+    // AI Service health check
+    const aiStart = Date.now();
+    try {
+      const OpenAI = require('openai');
+      const client = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        project: process.env.OPENAI_PROJECT || undefined,
+      });
+      
+      // Quick model list check (doesn't count against quota)
+      await client.models.list();
+      
+      health.services.ai = {
+        status: 'healthy',
+        responseTime: Date.now() - aiStart,
+        model: process.env.AI_MODEL_FAST || 'gpt-4o-mini'
+      };
+    } catch (aiError) {
+      health.services.ai = {
+        status: 'unhealthy',
+        responseTime: Date.now() - aiStart,
+        error: aiError.message
+      };
+    }
+
+    // WhatsApp service health check
+    health.services.whatsapp = {
+      status: process.env.MAYTAPI_API_KEY ? 'configured' : 'not_configured',
+      provider: 'maytapi'
+    };
+
+    // Broadcast queue metrics
+    try {
+      const { data: queueStats } = await supabase
+        .from('bulk_schedules')
+        .select('status')
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+      const statusCounts = {};
+      queueStats?.forEach(item => {
+        statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
+      });
+
+      health.metrics.broadcastQueue = statusCounts;
+    } catch (error) {
+      health.metrics.broadcastQueue = { error: error.message };
+    }
+
+    // Overall health determination
+    const unhealthyServices = Object.values(health.services)
+      .filter(service => service.status === 'unhealthy');
+    
+    if (unhealthyServices.length > 0) {
+      health.status = 'degraded';
+    }
+
+    health.responseTime = Date.now() - startTime;
+    
+    const statusCode = health.status === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(health);
+    
+  } catch (error) {
+    health.status = 'unhealthy';
+    health.error = error.message;
+    health.responseTime = Date.now() - startTime;
+    
+    console.error('[HEALTH_CHECK] Critical error:', error);
+    res.status(503).json(health);
+  }
+});
+
+// Detailed metrics endpoint for monitoring systems
+app.get('/metrics', async (req, res) => {
+  try {
+    const adminToken = process.env.ADMIN_TOKEN || '';
+    if (adminToken && req.get('x-admin-token') !== adminToken) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    const metrics = {
+      timestamp: new Date().toISOString(),
+      system: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        cpuUsage: process.cpuUsage(),
+        nodeVersion: process.version,
+        platform: process.platform
+      },
+      application: {
+        environment: process.env.NODE_ENV,
+        broadcastBatchSize: process.env.BROADCAST_BATCH_SIZE || 5,
+        rateLimit: process.env.BROADCAST_RATE_LIMIT_MS || 12000
+      }
+    };
+
+    // Database metrics
+    try {
+      const [tenants, conversations, broadcasts, products] = await Promise.all([
+        supabase.from('tenants').select('count(*)'),
+        supabase.from('conversations').select('count(*)').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+        supabase.from('bulk_schedules').select('status, count(*)').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+        supabase.from('products').select('count(*)')
+      ]);
+
+      metrics.database = {
+        totalTenants: tenants.data?.[0]?.count || 0,
+        conversationsLast24h: conversations.data?.[0]?.count || 0,
+        broadcastsLast24h: broadcasts.data?.reduce((acc, item) => acc + (item.count || 0), 0) || 0,
+        totalProducts: products.data?.[0]?.count || 0
+      };
+    } catch (error) {
+      metrics.database = { error: error.message };
+    }
+
+    res.json(metrics);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Broadcast queue status endpoint
+app.get('/api/broadcast/status', async (req, res) => {
+  try {
+    const adminToken = process.env.ADMIN_TOKEN || '';
+    if (adminToken && req.get('x-admin-token') !== adminToken) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    const { data: queueData, error } = await supabase
+      .from('bulk_schedules')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    const stats = {
+      total: queueData.length,
+      pending: queueData.filter(item => item.status === 'pending').length,
+      processing: queueData.filter(item => item.status === 'processing').length,
+      sent: queueData.filter(item => item.status === 'sent').length,
+      failed: queueData.filter(item => item.status === 'failed').length,
+      skipped: queueData.filter(item => item.status === 'skipped').length
+    };
+
+    const recentCampaigns = queueData
+      .reduce((acc, item) => {
+        if (!acc[item.campaign_name]) {
+          acc[item.campaign_name] = {
+            name: item.campaign_name,
+            created: item.created_at,
+            total: 0,
+            sent: 0,
+            pending: 0,
+            failed: 0
+          };
+        }
+        acc[item.campaign_name].total++;
+        acc[item.campaign_name][item.status]++;
+        return acc;
+      }, {});
+
+    res.json({
+      stats,
+      recentCampaigns: Object.values(recentCampaigns).slice(0, 10),
+      recentMessages: queueData.slice(0, 20).map(item => ({
+        id: item.id,
+        campaign: item.campaign_name,
+        phone: item.to_phone_number?.slice(-4) || 'xxxx', // Only show last 4 digits
+        status: item.status,
+        created: item.created_at,
+        scheduled: item.scheduled_at,
+        retries: item.retry_count || 0
+      }))
+    });
+
+  } catch (error) {
+    console.error('[BROADCAST_STATUS] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Additive: provider sanity endpoint (secured via ADMIN_TOKEN) ---
+app.get('/api/debug/providers', async (req, res) => {
+  try {
+    const adminToken = process.env.ADMIN_TOKEN || '';
+    if (adminToken && req.get('x-admin-token') !== adminToken) {
+      return res.status(403).json({ ok: false, error: 'forbidden' });
+    }
+    const out = { ok: true };
+
+    // OpenAI check (models list)
+    try {
+      const fetch = (await import('node-fetch')).default;
+      const r = await fetch('https://api.openai.com/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY || ''}`,
+          'OpenAI-Project': process.env.OPENAI_PROJECT || ''
+        }
+      });
+      out.openai = { status: r.status, ok: r.ok };
+      out.body = (await r.text()).slice(0, 400); // truncate
+    } catch (e) {
+      out.openai = { ok: false, error: String(e) };
+    }
+
+    res.json(out);
+  } catch (e) {
+    res.status(200).json({ ok: false, error: 'internal', hint: String(e) });
+  }
+});
+
+// --- ADD: Maytapi provider sanity ---
+app.get('/api/debug/maytapi', async (req, res) => {
+  try {
+    const adminToken = process.env.ADMIN_TOKEN || '';
+    if (adminToken && req.get('x-admin-token') !== adminToken) {
+      return res.status(403).json({ ok:false, error:'forbidden' });
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const PROD = process.env.MAYTAPI_PRODUCT_ID || '';
+    const PHONE = process.env.MAYTAPI_PHONE_ID || '';
+    const KEY   = process.env.MAYTAPI_API_KEY || '';
+
+    const base = `https://api.maytapi.com/api/${PROD}/${PHONE}`;
+
+    // 1) Header style (per docs)
+    const r1 = await fetch(`${base}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-maytapi-key': KEY },
+      body: JSON.stringify({ to_number: '918484830021', type:'status', message:'ping' })
+    });
+    const t1 = await r1.text();
+
+    // 2) Query-param style (some endpoints accept ?token=)
+    const r2 = await fetch(`${base}/checkNumberStatus?token=${encodeURIComponent(KEY)}&number=918484830021@c.us`);
+    const t2 = await r2.text();
+
+    res.json({
+      ok: true,
+      env: {
+        product_id_set: !!PROD,
+        phone_id_set: !!PHONE,
+        api_key_set: !!KEY
+      },
+      header_call: { status: r1.status, ok: r1.ok, body: t1.slice(0,400) },
+      token_call:  { status: r2.status, ok: r2.ok, body: t2.slice(0,400) }
+    });
+  } catch (e) {
+    res.status(200).json({ ok:false, error: String(e) });
+  }
+});
+
+// --- ADD: Supabase provider sanity ---
+app.get('/api/debug/supabase', async (req, res) => {
+  try {
+    const adminToken = process.env.ADMIN_TOKEN || '';
+    if (adminToken && req.get('x-admin-token') !== adminToken) {
+      return res.status(403).json({ ok:false, error:'forbidden' });
+    }
+    const { supabase } = require('./services/config');
+    const out = { ok: true, env: {} };
+
+    out.env.url_set  = !!process.env.SUPABASE_URL;
+    out.env.svc_key_set = !!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY);
+    out.env.which_key = process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SERVICE_ROLE_KEY' :
+                        (process.env.SUPABASE_SERVICE_KEY ? 'SERVICE_KEY' : 'none');
+
+    // simple probe: list 1 tenant id
+    const r = await supabase.from('tenants').select('id').limit(1);
+    out.query_status = r.error ? 'error' : 'ok';
+    out.query_error  = r.error ? (r.error.message || r.error) : null;
+    out.sample       = (r.data && r.data[0]) ? r.data[0] : null;
+
+    res.json(out);
+  } catch (e) {
+    res.status(200).json({ ok:false, error:String(e) });
+  }
+});
+
+// --- ADD: OpenAI env peek (safe, masked)
+app.get('/api/debug/env/openai', (req, res) => {
+  const admin = process.env.ADMIN_TOKEN || '';
+  if (admin && req.get('x-admin-token') !== admin) {
+    return res.status(403).json({ ok:false, error:'forbidden' });
+  }
+  const key = process.env.OPENAI_API_KEY || '';
+  const proj = process.env.OPENAI_PROJECT || '';
+  const fast = process.env.AI_MODEL_FAST || '';
+  const smart = process.env.AI_MODEL_SMART || '';
+  res.json({
+    ok: true,
+    project_set: !!proj,
+    model_fast: fast,
+    model_smart: smart,
+    key_mask: key ? `${key.slice(0,6)}…${key.slice(-4)}` : null
+  });
+});
+
+// --- ADD: OpenAI live ping (uses your existing ai service)
+app.get('/api/debug/ai', async (req, res) => {
+  const admin = process.env.ADMIN_TOKEN || '';
+  if (admin && req.get('x-admin-token') !== admin) {
+    return res.status(403).json({ ok:false, error:'forbidden' });
+  }
+  try {
+    const { getAIResponse } = require('./services/aiService'); // keep your current export
+    const prompt = req.query.prompt || 'ping';
+    const reply = await getAIResponse({
+      system: 'You are a health probe. Reply with "pong".',
+      user: prompt
+    });
+    res.json({ ok: true, reply });
+  } catch (e) {
+    // expose structured error so we can see the real cause
+    const status = e.status || e.code || null;
+    const body   = e.response?.data || e.error || e.message || String(e);
+    res.status(200).json({ ok:false, status, error: body });
+  }
+});
+
+// --- ADD: Raw OpenAI probe (admin-only)
+app.get('/api/debug/ai/raw', async (req, res) => {
+  const admin = process.env.ADMIN_TOKEN || '';
+  if (admin && req.get('x-admin-token') !== admin) {
+    return res.status(403).json({ ok:false, error:'forbidden' });
+  }
+  try {
+    const OpenAI = require('openai');
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      project: process.env.OPENAI_PROJECT || undefined, // safe if set
+    });
+    const model = process.env.AI_MODEL_FAST || 'gpt-4o-mini';
+    const prompt = req.query.prompt || 'ping';
+
+    // Use chat.completions (stable)
+    const r = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: 'Reply with "pong" if you can see this.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.2,
+    });
+
+    const text = r.choices?.[0]?.message?.content ?? null;
+    res.json({ ok: true, model, text, usage: r.usage || null, raw_id: r.id || null });
+  } catch (e) {
+    // Return precise error details
+    const status = e?.status || e?.code || null;
+    const data = e?.response?.data || e?.message || String(e);
+    res.json({ ok:false, status, error: data });
+  }
+});
+
+// ---- ADD: keyword module introspection (admin only)
+app.get('/api/debug/keywords', (req, res) => {
+  const admin = process.env.ADMIN_TOKEN || '';
+  if (admin && req.get('x-admin-token') !== admin) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+  let svc = null, names = [];
+  try {
+    svc = require('./services/keywordService');
+    names = Object.keys(svc || {});
+  } catch (e) {
+    return res.json({ ok: true, loaded: false, error: e?.message || String(e) });
+  }
+  res.json({
+    ok: true,
+    loaded: true,
+    keys: names,
+    has_findKeywordResponse: typeof svc?.findKeywordResponse === 'function',
+    has_default_findKeywordResponse: typeof svc?.default?.findKeywordResponse === 'function'
+  });
+});
+
+// --- ADD/REPLACE: safer AI debug route that never touches V2/DB
+app.get('/api/debug/ai2', async (req, res) => {
+  const adminToken = process.env.ADMIN_TOKEN || '';
+  if (adminToken && req.get('x-admin-token') !== adminToken) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+
+  const prompt = typeof req.query.prompt === 'string' ? req.query.prompt : 'ping';
+
+  try {
+    // 1) Try your new singleton that uses Chat Completions
+    try {
+      const { getAIResponseDirect, getAIResponse } = require('./services/aiService');
+      const fn = getAIResponseDirect || getAIResponse; // prefer direct, else wrapper
+      if (fn) {
+        const reply = await fn({ system: 'Health check', user: prompt, mode: 'fast' });
+        return res.json({ ok: true, reply });
+      }
+    } catch (_) {
+      // no-op: fall through to raw call
+    }
+
+    // 2) Fallback: call OpenAI chat directly (never DB)
+    const OpenAI = require('openai');
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      project: process.env.OPENAI_PROJECT || undefined,
+    });
+    const model = process.env.AI_MODEL_FAST || 'gpt-4o-mini';
+
+    const r = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: 'Reply with "pong" if you can see this.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.2,
+    });
+
+    const text = r.choices?.[0]?.message?.content ?? null;
+    if (!text) return res.json({ ok: false, error: 'empty-openai-reply' });
+
+    return res.json({ ok: true, reply: text });
+  } catch (e) {
+    return res.json({
+      ok: false,
+      status: e?.status || e?.code || null,
+      error: e?.response?.data || e?.message || String(e),
+    });
+  }
+});
+
+// --- ADD: Extended health check (admin-only)
+app.get('/api/debug/health', async (req, res) => {
+  try {
+    const health = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      environment: process.env.NODE_ENV || 'development',
+      env: {
+        project: process.env.GOOGLE_CLOUD_PROJECT || null,
+        ai_path: process.env.AI_PATH || '(default)',
+        fast: process.env.AI_MODEL_FAST || 'gpt-4o-mini',
+        smart: process.env.AI_MODEL_SMART || 'gpt-4o',
+        embed: process.env.EMBEDDING_MODEL || process.env.AI_EMBEDDING_MODEL || 'text-embedding-3-small',
+        supabase: !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        maytapi: !!process.env.MAYTAPI_API_KEY,
+      }
+    };
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Real-time conversation monitoring
+app.get('/api/test/conversations', (req, res) => {
+  const adminToken = process.env.ADMIN_TOKEN || '';
+  if (adminToken && req.get('x-admin-token') !== adminToken) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  
+  const { getAllActiveChats } = require('./services/realtimeTestingService');
+  const activeChats = getAllActiveChats();
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    activeConversations: activeChats.length,
+    conversations: activeChats
+  });
+});
+
+// Get specific conversation status
+app.get('/api/test/conversation/:phone', (req, res) => {
+  const adminToken = process.env.ADMIN_TOKEN || '';
+  if (adminToken && req.get('x-admin-token') !== adminToken) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  
+  const { getTestingStatus } = require('./services/realtimeTestingService');
+  const tenantId = req.query.tenant_id || 'default';
+  const phone = req.params.phone;
+  
+  const status = getTestingStatus(tenantId, phone);
+  res.json({
+    phone,
+    tenantId,
+    ...status
+  });
+});
+
+// Manually trigger analysis (for testing)
+app.post('/api/test/trigger-analysis', async (req, res) => {
+  const adminToken = process.env.ADMIN_TOKEN || '';
+  if (adminToken && req.get('x-admin-token') !== adminToken) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  
+  const { triggerTestAnalysis } = require('./services/realtimeTestingService');
+  const { tenant_id, phone } = req.body;
+  
+  if (!tenant_id || !phone) {
+    return res.status(400).json({ error: 'tenant_id and phone required' });
+  }
+  
+  const result = await triggerTestAnalysis(tenant_id, phone);
+  res.json({
+    success: result,
+    message: result ? 'Analysis triggered' : 'No active conversation found'
+  });
+});
+
+// Lead scoring test endpoint
+app.get('/api/test/lead-score/:phone', async (req, res) => {
+  const adminToken = process.env.ADMIN_TOKEN || '';
+  if (adminToken && req.get('x-admin-token') !== adminToken) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  
+  const phone = req.params.phone;
+  const tenantId = req.query.tenant_id || 'default';
+  
+  try {
+    const { data: conversation } = await supabase
+      .from('conversations')
+      .select('lead_score, context_analysis, follow_up_at, follow_up_count')
+      .eq('tenant_id', tenantId)
+      .eq('end_user_phone', phone)
+      .single();
+    
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    
+    let context = null;
+    try {
+      context = conversation.context_analysis ? JSON.parse(conversation.context_analysis) : null;
+    } catch (e) {
+      context = null;
+    }
+    
+    res.json({
+      phone,
+      leadScore: conversation.lead_score,
+      context,
+      followUpScheduled: conversation.follow_up_at,
+      followUpCount: conversation.follow_up_count
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 1. Check if realtime service is loaded and working
+app.get('/api/test/realtime-status', (req, res) => {
+  // Fallback: try to require the module if global is missing
+  let svc = global.realtimeTestingService;
+  if (!svc) {
+    try { svc = require('./services/realtimeTestingService'); } catch {}
+  }
+
+  const isLoaded = !!svc;
+  const activeTimers =
+    (svc && svc.activeTimers && typeof svc.activeTimers.size === 'number')
+      ? svc.activeTimers.size : 0;
+  const conversationStates =
+    (svc && svc.conversationStates && typeof svc.conversationStates.size === 'number')
+      ? svc.conversationStates.size : 0;
+
+  res.json({
+    realtimeServiceLoaded: isLoaded,
+    activeTimers,
+    conversationStates,
+    status: isLoaded ? 'Ready for testing' : 'Service not loaded'
+  });
+});
+
+// 2. Simulate a customer message (starts timer)
+app.post('/api/test/simulate-customer-message', (req, res) => {
+  const { phone, message } = req.body;
+  
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number required' });
+  }
+
+  if (global.realtimeTestingService) {
+    global.realtimeTestingService.trackCustomerMessage(phone, {
+      type: 'text',
+      content: message || 'Test message',
+      timestamp: new Date()
+    });
+
+    res.json({
+      success: true,
+      message: `Customer message tracked for ${phone}`,
+      timerStarted: true,
+      timeoutIn: '5 minutes'
+    });
+  } else {
+    res.status(500).json({ error: 'Realtime service not available' });
+  }
+});
+
+// 3. Simulate a bot response (resets timer)
+app.post('/api/test/simulate-bot-response', (req, res) => {
+  const { phone, response } = req.body;
+  
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number required' });
+  }
+
+  if (global.realtimeTestingService) {
+    global.realtimeTestingService.trackBotResponse(phone, {
+      type: 'text',
+      content: response || 'Test bot response',
+      timestamp: new Date()
+    });
+
+    res.json({
+      success: true,
+      message: `Bot response tracked for ${phone}`,
+      timerReset: true,
+      newTimeoutIn: '5 minutes'
+    });
+  } else {
+    res.status(500).json({ error: 'Realtime service not available' });
+  }
+});
+
+// 4. Force trigger timeout (for immediate testing)
+app.post('/api/test/force-timeout', (req, res) => {
+  const { phone } = req.body;
+  
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number required' });
+  }
+
+  if (global.realtimeTestingService) {
+    // Trigger timeout immediately
+    global.realtimeTestingService.handleConversationTimeout(phone);
+
+    res.json({
+      success: true,
+      message: `Timeout manually triggered for ${phone}`,
+      note: 'Check logs for follow-up creation'
+    });
+  } else {
+    res.status(500).json({ error: 'Realtime service not available' });
+  }
+});
+
+// 5. View all active timers and conversation states
+app.get('/api/test/conversation-debug', (req, res) => {
+  try {
+    const svc = global.realtimeTestingService || {};
+
+    // Try the most likely places your code might store timers
+    const timersAny =
+      svc.activeTimers ??
+      svc.timers ??
+      svc.timerMap ??
+      svc.timerIds ??
+      null;
+
+    // Normalize to array of { id, ...meta }
+    let timersArr = [];
+    let size = 0;
+
+    if (timersAny && typeof timersAny.size === 'number' && typeof timersAny.keys === 'function') {
+      // Map-like
+      size = timersAny.size;
+      timersArr = Array.from(timersAny.entries()).map(([id, rec]) => ({
+        id,
+        ...(rec || {})
+      }));
+    } else if (Array.isArray(timersAny)) {
+      // Array
+      size = timersAny.length;
+      timersArr = timersAny;
+    } else if (timersAny && typeof timersAny === 'object') {
+      // Plain object
+      const keys = Object.keys(timersAny);
+      size = keys.length;
+      timersArr = keys.map((id) => ({ id, ...(timersAny[id] || {}) }));
+    } else {
+      // Nothing present
+      size = 0;
+      timersArr = [];
+    }
+
+    // Add a tiny heartbeat if you expose one; fallback to 0
+    const conversationStates =
+      (svc.conversationStates && typeof svc.conversationStates.size === 'number')
+        ? svc.conversationStates.size
+        : (typeof svc.tick === 'number' ? svc.tick : 0);
+
+    return res.status(200).json({
+      ok: true,
+      realtimeServiceLoaded: !!svc,
+      activeTimers: size,
+      timers: timersArr,
+      conversationStates
+    });
+  } catch (e) {
+    console.error('[conversation-debug]', e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// 6. Quick test sequence - complete flow in 30 seconds
+app.post('/api/test/quick-flow-test', (req, res) => {
+  const { phone } = req.body;
+  
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number required' });
+  }
+
+  if (!global.realtimeTestingService) {
+    return res.status(500).json({ error: 'Realtime service not available' });
+  }
+
+  const service = global.realtimeTestingService;
+  
+  // Step 1: Customer message
+  service.trackCustomerMessage(phone, {
+    type: 'text',
+    content: 'Quick test message',
+    timestamp: new Date()
+  });
+
+  setTimeout(() => {
+    // Step 2: Bot response (after 5 seconds)
+    service.trackBotResponse(phone, {
+      type: 'text',
+      content: 'Quick test bot response',
+      timestamp: new Date()
+    });
+
+    setTimeout(() => {
+      // Step 3: Force timeout (after another 10 seconds, total 15 seconds)
+      service.handleConversationTimeout(phone);
+    }, 10000);
+
+  }, 5000);
+
+  res.json({
+    success: true,
+    message: `Quick flow test started for ${phone}`,
+    timeline: {
+      step1: 'Customer message - NOW',
+      step2: 'Bot response - in 5 seconds',
+      step3: 'Timeout trigger - in 15 seconds'
+    },
+    note: 'Monitor logs for the complete flow'
+  });
+});
+
+// 7. Clear all timers and states (reset for testing)
+app.post('/api/test/reset-all', (req, res) => {
+  if (!global.realtimeTestingService) {
+    return res.status(500).json({ error: 'Realtime service not available' });
+  }
+
+  const service = global.realtimeTestingService;
+  
+  // Clear all timers
+  service.activeTimers.forEach(timerId => clearTimeout(timerId));
+  service.activeTimers.clear();
+  service.conversationStates.clear();
+
+  res.json({
+    success: true,
+    message: 'All timers and conversation states cleared',
+    note: 'Ready for fresh testing'
+  });
+});
+
+// Make sure your 404 handler only catches API routes, not static files
+// Replace your current 404 handler with this more specific one:
+app.use('/api/*', (req, res) => {
+    res.status(404).json({ error: 'API route not found' });
+});
+
+// Or comment out the 404 handler entirely for now:
+// app.use('*', (req, res) => {
+//   res.status(404).json({ error: 'Route not found' });
+// });
+
+// Harden process against crashes
+process.on('unhandledRejection', (err) => {
+  console.error('[UNHANDLED_REJECTION]', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT_EXCEPTION]', err);
+});
+
+// Error tracking and logging middleware
+app.use((err, req, res, next) => {
+  const errorId = require('crypto').randomUUID().slice(0, 8);
+  
+  console.error(`[ERROR][${errorId}]`, {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('user-agent'),
+    timestamp: new Date().toISOString()
+  });
+
+  // Send error to external monitoring service (if configured)
+  if (process.env.SENTRY_DSN) {
+    // Sentry integration would go here
+  }
+
+  res.status(err.status || 500).json({
+    error: 'Internal Server Error',
+    errorId,
+    message: process.env.NODE_ENV === 'production' ? 'An error occurred' : err.message
+  });
+});
+
+// --- Start Server ---
+const server = app.listen(PORT, () => {
+    console.log(`Server listening on port ${PORT}`);
+});
+
+console.log('🧪 Test endpoints loaded:');
+console.log('  GET  /api/test/realtime-status');
+console.log('  POST /api/test/simulate-customer-message');
+console.log('  POST /api/test/simulate-bot-response'); 
+console.log('  POST /api/test/force-timeout');
+console.log('  GET  /api/test/conversation-debug');
+console.log('  POST /api/test/quick-flow-test');
+console.log('  POST /api/test/reset-all');
+
+console.log('[DEBUG] About to initialize shipment tracking cron...');
+
+// Start shipment tracking cron job
+try {
+  const shipmentTrackingCron = require('./schedulers/shipmentTrackingCron');
+  console.log('[SHIPMENT_TRACKING] Initializing cron job...');
+  shipmentTrackingCron.start();
+  console.log('[SHIPMENT_TRACKING] ✅ Cron job started - checking daily at 9 AM');
+} catch (error) {
+  console.error('[SHIPMENT_TRACKING] ❌ Failed to start cron:', error.message);
+  console.error('[SHIPMENT_TRACKING] Stack:', error.stack);
+}
+
+// Start cron job - every minute for broadcasts, every 15 minutes for follow-ups
+cron.schedule('* * * * *', async () => {
+  console.log('[CRON] Starting broadcast queue processing...');
+  try {
+    await processBroadcastQueue();
+  } catch (error) {
+    console.error('[CRON] Error:', error);
+  }
+});
+
+// Run every 15 minutes for follow-ups and urgent tasks
+cron.schedule('*/15 * * * *', runScheduledTasks);
+
+console.log('[CRON] Broadcast queue processor started');
+
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+    process.exit(0);
+  });
+});
+
+// Memory monitoring
+setInterval(() => {
+  const memUsage = process.memoryUsage();
+  const memUsageMB = {
+    rss: Math.round(memUsage.rss / 1024 / 1024),
+    heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+    heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+    external: Math.round(memUsage.external / 1024 / 1024)
+  };
+
+  // Log memory usage if it's high (configurable threshold)
+  const heapThreshold = parseInt(process.env.MEMORY_THRESHOLD_MB) || 512;
+  if (memUsageMB.heapUsed > heapThreshold) {
+    console.warn('[MEMORY_WARNING] High memory usage detected:', memUsageMB);
+  }
+
+  // Force garbage collection if available and memory is very high
+  if (global.gc && memUsageMB.heapUsed > heapThreshold * 1.5) {
+    console.log('[MEMORY] Forcing garbage collection');
+    global.gc();
+  }
+}, 60000); // Check every minute
+
+// Export for future tests
+module.exports = {
+  app,
+  // Export monitoring functions for use in other modules
+  getSystemMetrics: () => ({
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    cpuUsage: process.cpuUsage()
+  }),
+  
+  logError: (error, context = {}) => {
+    const errorId = require('crypto').randomUUID().slice(0, 8);
+    console.error(`[ERROR][${errorId}]`, {
+      message: error.message,
+      stack: error.stack,
+      ...context,
+      timestamp: new Date().toISOString()
+    });
+    return errorId;
+  }
+};
+
+// Initialize intelligence scheduler
+require('./schedulers/intelligenceRunner')
+
+// Initialize follow-up schedulers
+const { initializeFollowUpScheduler } = require('./schedulers/followUpCron');
+const { initializeIntelligentFollowUpScheduler } = require('./schedulers/intelligentFollowUpCron');
+
+// Start follow-up schedulers
+initializeFollowUpScheduler();  // Manual "remind me" follow-ups (every 5 minutes)
+initializeIntelligentFollowUpScheduler();  // Intelligent behavioral follow-ups (daily at 9 AM)
+
+console.log('[INIT] Follow-up schedulers initialized');
+

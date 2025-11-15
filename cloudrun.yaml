@@ -1,0 +1,21 @@
+# Cloud Run Configuration
+# This file is optional but helps with deployment settings
+
+service_name: sak-whatsapp-assistant
+region: asia-south1
+platform: managed
+allow-unauthenticated: true
+
+# Environment variables
+env_vars:
+  NODE_ENV: production
+  
+# Resources - Increased for Puppeteer/WhatsApp Web
+memory: 2Gi
+cpu: 2
+timeout: 300s
+max-instances: 10
+min-instances: 0
+
+# Concurrency
+concurrency: 80

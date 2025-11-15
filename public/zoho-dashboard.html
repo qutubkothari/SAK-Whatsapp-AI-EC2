@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoho Authorization Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .tenant-selector {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .tenant-selector h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #4a90e2;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20692e 100%);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+            color: #333;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+        
+        .status-card {
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+        
+        .status-card.authorized {
+            border-color: #28a745;
+            background: #f8fff9;
+        }
+        
+        .status-card.not-authorized {
+            border-color: #dc3545;
+            background: #fff8f8;
+        }
+        
+        .status-card.expired {
+            border-color: #ffc107;
+            background: #fffdf5;
+        }
+        
+        .status-icon {
+            font-size: 2rem;
+            margin-right: 15px;
+            vertical-align: middle;
+        }
+        
+        .status-details {
+            margin-top: 15px;
+        }
+        
+        .status-details dt {
+            font-weight: 600;
+            color: #333;
+            margin-top: 10px;
+        }
+        
+        .status-details dd {
+            margin-left: 20px;
+            color: #666;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .alert-info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4a90e2;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .scope-list {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Zoho Authorization Management</h1>
+            <p>Manage Zoho Books integration for your WhatsApp Sales Bot</p>
+        </div>
+        
+        <div class="content">
+            <!-- Tenant Selection -->
+            <div class="tenant-selector">
+                <h3>Select Tenant</h3>
+                <div class="form-group">
+                    <label for="tenantSelect">Choose your business:</label>
+                    <select id="tenantSelect">
+                        <option value="">Loading tenants...</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="loadTenantStatus()">
+                    Load Authorization Status
+                </button>
+            </div>
+            
+            <!-- Status Display -->
+            <div id="statusContainer" class="hidden">
+                <h3>Authorization Status</h3>
+                <div id="statusCard" class="status-card">
+                    <div id="statusContent"></div>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div id="actionsContainer" class="hidden">
+                <h3>Actions</h3>
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="initiateAuthorization()">
+                        🔗 Authorize Zoho Books
+                    </button>
+                    <button class="btn btn-success" onclick="testConnection()">
+                        🧪 Test Connection
+                    </button>
+                    <button class="btn btn-warning" onclick="syncProducts()">
+                        🔄 Sync Products
+                    </button>
+                    <button class="btn btn-primary" onclick="viewItems()">
+                        📦 View Zoho Items
+                    </button>
+                    <button class="btn btn-danger" onclick="revokeAuthorization()">
+                        ❌ Revoke Authorization
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Results -->
+            <div id="resultsContainer">
+                <!-- Results will be displayed here -->
+            </div>
+            
+            <!-- Product Sync Results -->
+            <div id="syncResults" class="hidden">
+                <h3>Product Sync Results</h3>
+                <div id="syncDetails"></div>
+            </div>
+            
+            <!-- Zoho Items -->
+            <div id="itemsContainer" class="hidden">
+                <h3>Zoho Books Items</h3>
+                <div id="itemsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTenantId = null;
+        
+        // Load tenants on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTenants();
+        });
+        
+        async function loadTenants() {
+            try {
+                showAlert('info', 'Loading tenants...', 'resultsContainer');
+                
+                const response = await fetch('/api/dashboard/tenants');
+                
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Endpoint not available. Please ensure /api/dashboard/tenants route is configured.');
+                }
+                
+                const data = await response.json();
+                
+                const select = document.getElementById('tenantSelect');
+                select.innerHTML = '<option value="">Select a tenant...</option>';
+                
+                if (data.success && data.tenants) {
+                    data.tenants.forEach(tenant => {
+                        const option = document.createElement('option');
+                        option.value = tenant.id;
+                        option.textContent = `${tenant.business_name} (ID: ${tenant.id.substring(0, 8)}...)`;
+                        select.appendChild(option);
+                    });
+                    showAlert('success', `Loaded ${data.tenants.length} tenants successfully`, 'resultsContainer');
+                } else {
+                    select.innerHTML = '<option value="">No tenants found</option>';
+                    showAlert('info', 'No tenants found in database', 'resultsContainer');
+                }
+                
+            } catch (error) {
+                console.error('Load tenants error:', error);
+                
+                // Fallback: Allow manual tenant ID entry
+                const select = document.getElementById('tenantSelect');
+                select.innerHTML = `
+                    <option value="">Enter tenant ID manually below:</option>
+                    <option value="manual">Manual Entry</option>
+                `;
+                
+                // Add manual input field
+                const manualInputHTML = `
+                    <div id="manualTenantInput" style="margin-top: 10px;">
+                        <label for="manualTenantId">Enter Tenant ID manually:</label>
+                        <input type="text" id="manualTenantId" placeholder="Enter UUID tenant ID" style="margin-top: 5px;">
+                        <button class="btn btn-primary" onclick="useManualTenantId()" style="margin-top: 5px;">Use This Tenant ID</button>
+                    </div>
+                `;
+                
+                const tenantSelector = document.querySelector('.tenant-selector');
+                if (!document.getElementById('manualTenantInput')) {
+                    tenantSelector.insertAdjacentHTML('beforeend', manualInputHTML);
+                }
+                
+                showAlert('error', `Error loading tenants: ${error.message}<br><br>You can enter a tenant ID manually below.`, 'resultsContainer');
+            }
+        }
+        
+        function useManualTenantId() {
+            const manualId = document.getElementById('manualTenantId').value.trim();
+            if (!manualId) {
+                showAlert('error', 'Please enter a valid tenant ID', 'resultsContainer');
+                return;
+            }
+            
+            // Validate UUID format (basic check)
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(manualId)) {
+                showAlert('error', 'Please enter a valid UUID format (e.g., 12345678-1234-1234-1234-123456789012)', 'resultsContainer');
+                return;
+            }
+            
+            // Set the manual ID and load status
+            const select = document.getElementById('tenantSelect');
+            select.innerHTML = `<option value="${manualId}" selected>Manual Entry: ${manualId.substring(0, 8)}...</option>`;
+            currentTenantId = manualId;
+            
+            loadTenantStatus();
+        }
+        
+        async function loadTenantStatus() {
+            const tenantId = document.getElementById('tenantSelect').value;
+            if (!tenantId) {
+                showAlert('error', 'Please select a tenant first', 'resultsContainer');
+                return;
+            }
+            
+            currentTenantId = tenantId;
+            
+            try {
+                showAlert('info', 'Loading authorization status...', 'resultsContainer');
+                
+                const response = await fetch(`/api/zoho/auth/status/${tenantId}`);
+                const data = await response.json();
+                
+                displayAuthorizationStatus(data);
+                document.getElementById('statusContainer').classList.remove('hidden');
+                document.getElementById('actionsContainer').classList.remove('hidden');
+                
+                clearResults();
+            } catch (error) {
+                showAlert('error', `Error loading status: ${error.message}`, 'resultsContainer');
+            }
+        }
+        
+        function displayAuthorizationStatus(data) {
+            const statusCard = document.getElementById('statusCard');
+            const statusContent = document.getElementById('statusContent');
+            
+            if (data.authorized) {
+                statusCard.className = 'status-card ' + (data.tokenExpired ? 'expired' : 'authorized');
+                
+                const icon = data.tokenExpired ? '⚠️' : '✅';
+                const status = data.tokenExpired ? 'Token Expired' : 'Authorized';
+                
+                statusContent.innerHTML = `
+                    <div>
+                        <span class="status-icon">${icon}</span>
+                        <strong>${status}</strong>
+                    </div>
+                    <dl class="status-details">
+                        <dt>Organization:</dt>
+                        <dd>${data.organizationName || 'N/A'}</dd>
+                        <dt>Organization ID:</dt>
+                        <dd>${data.organizationId || 'N/A'}</dd>
+                        <dt>Authorized Date:</dt>
+                        <dd>${data.authorizedAt ? new Date(data.authorizedAt).toLocaleString() : 'N/A'}</dd>
+                        <dt>Token Expires:</dt>
+                        <dd>${data.tokenExpires ? new Date(data.tokenExpires).toLocaleString() : 'N/A'}</dd>
+                        ${data.scopes ? `
+                            <dt>Granted Scopes:</dt>
+                            <dd><div class="scope-list">${data.scopes}</div></dd>
+                        ` : ''}
+                    </dl>
+                `;
+            } else {
+                statusCard.className = 'status-card not-authorized';
+                statusContent.innerHTML = `
+                    <div>
+                        <span class="status-icon">❌</span>
+                        <strong>Not Authorized</strong>
+                    </div>
+                    <p style="margin-top: 15px;">This tenant has not been authorized with Zoho Books yet. Click "Authorize Zoho Books" to start the authorization process.</p>
+                `;
+            }
+        }
+        
+        async function initiateAuthorization() {
+            if (!currentTenantId) {
+                showAlert('error', 'Please select a tenant first', 'resultsContainer');
+                return;
+            }
+            
+            try {
+                showAlert('info', 'Generating authorization URL...', 'resultsContainer');
+                
+                const response = await fetch('/api/zoho/auth/initialize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        tenantId: currentTenantId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', `
+                        <strong>Authorization URL Generated!</strong><br>
+                        <a href="${data.authUrl}" target="_blank" style="color: #155724; text-decoration: underline;">
+                            Click here to authorize Zoho Books access
+                        </a><br>
+                        <small>The link will open in a new window. After authorization, come back here and reload the status.</small>
+                    `, 'resultsContainer');
+                } else {
+                    showAlert('error', `Error: ${data.error}`, 'resultsContainer');
+                }
+            } catch (error) {
+                showAlert('error', `Error initiating authorization: ${error.message}`, 'resultsContainer');
+            }
+        }
+        
+        async function testConnection() {
+            if (!currentTenantId) {
+                showAlert('error', 'Please select a tenant first', 'resultsContainer');
+                return;
+            }
+            
+            try {
+                showAlert('info', 'Testing Zoho connection...', 'resultsContainer');
+                
+                const response = await fetch(`/api/zoho/auth/test/${currentTenantId}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', `
+                        <strong>Connection Test Successful!</strong><br>
+                        Organization: ${data.organizationName}<br>
+                        ${data.message}
+                    `, 'resultsContainer');
+                } else {
+                    showAlert('error', `Connection test failed: ${data.error}`, 'resultsContainer');
+                }
+            } catch (error) {
+                showAlert('error', `Error testing connection: ${error.message}`, 'resultsContainer');
+            }
+        }
+        
+        async function syncProducts() {
+            if (!currentTenantId) {
+                showAlert('error', 'Please select a tenant first', 'resultsContainer');
+                return;
+            }
+            
+            try {
+                showAlert('info', 'Syncing products with Zoho...', 'resultsContainer');
+                
+                const response = await fetch(`/api/zoho/auth/sync-products/${currentTenantId}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const syncDetails = `
+                        <strong>Product Sync Completed!</strong><br>
+                        - Total items in Zoho: ${data.totalItems}<br>
+                        - Products updated: ${data.syncedCount}<br>
+                        ${data.errors && data.errors.length > 0 ? `- Errors: ${data.errors.length}` : ''}
+                    `;
+                    
+                    showAlert('success', syncDetails, 'resultsContainer');
+                    
+                    if (data.errors && data.errors.length > 0) {
+                        document.getElementById('syncResults').classList.remove('hidden');
+                        document.getElementById('syncDetails').innerHTML = `
+                            <h4>Errors encountered:</h4>
+                            <ul>
+                                ${data.errors.map(error => `<li>${error}</li>`).join('')}
+                            </ul>
+                        `;
+                    }
+                } else {
+                    showAlert('error', `Product sync failed: ${data.error}`, 'resultsContainer');
+                }
+            } catch (error) {
+                showAlert('error', `Error syncing products: ${error.message}`, 'resultsContainer');
+            }
+        }
+        
+        async function viewItems() {
+            if (!currentTenantId) {
+                showAlert('error', 'Please select a tenant first', 'resultsContainer');
+                return;
+            }
+            
+            try {
+                showAlert('info', 'Loading Zoho items...', 'resultsContainer');
+                
+                const response = await fetch(`/api/zoho/auth/items/${currentTenantId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', `Loaded ${data.items.length} items from Zoho Books`, 'resultsContainer');
+                    
+                    document.getElementById('itemsContainer').classList.remove('hidden');
+                    const itemsList = document.getElementById('itemsList');
+                    
+                    if (data.items.length > 0) {
+                        itemsList.innerHTML = `
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background: #f8f9fa;">
+                                        <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">Name</th>
+                                        <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">SKU</th>
+                                        <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">Rate</th>
+                                        <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.items.map(item => `
+                                        <tr>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${item.name}</td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${item.sku || 'N/A'}</td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">₹${item.rate}</td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${item.item_type || 'N/A'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `;
+                    } else {
+                        itemsList.innerHTML = '<p>No items found in Zoho Books.</p>';
+                    }
+                } else {
+                    showAlert('error', `Error loading items: ${data.error}`, 'resultsContainer');
+                }
+            } catch (error) {
+                showAlert('error', `Error loading items: ${error.message}`, 'resultsContainer');
+            }
+        }
+        
+        async function revokeAuthorization() {
+            if (!currentTenantId) {
+                showAlert('error', 'Please select a tenant first', 'resultsContainer');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to revoke Zoho authorization? This will disable invoice generation and require re-authorization.')) {
+                return;
+            }
+            
+            try {
+                showAlert('info', 'Revoking authorization...', 'resultsContainer');
+                
+                const response = await fetch(`/api/zoho/auth/revoke/${currentTenantId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', 'Authorization revoked successfully', 'resultsContainer');
+                    loadTenantStatus(); // Reload status
+                } else {
+                    showAlert('error', `Error revoking authorization: ${data.error}`, 'resultsContainer');
+                }
+            } catch (error) {
+                showAlert('error', `Error revoking authorization: ${error.message}`, 'resultsContainer');
+            }
+        }
+        
+        function showAlert(type, message, containerId) {
+            const container = document.getElementById(containerId);
+            const alertClass = type === 'error' ? 'alert-error' : 
+                              type === 'success' ? 'alert-success' : 'alert-info';
+            
+            container.innerHTML = `
+                <div class="alert ${alertClass}">
+                    ${message}
+                </div>
+            `;
+        }
+        
+        function clearResults() {
+            document.getElementById('resultsContainer').innerHTML = '';
+            document.getElementById('syncResults').classList.add('hidden');
+            document.getElementById('itemsContainer').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

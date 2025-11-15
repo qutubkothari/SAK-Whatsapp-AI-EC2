@@ -1,0 +1,42 @@
+2025-10-28 09:06:55 default[20251028t143452]  "GET /health HTTP/1.1" 503
+2025-10-28 09:06:56 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:09:17 default[20251028t143452]  "GET / HTTP/1.1" 503
+2025-10-28 09:09:17 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:09:19 default[20251028t143452]  "GET /favicon.ico HTTP/1.1" 503
+2025-10-28 09:09:19 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:10:16 default[20251028t143452]  "GET / HTTP/1.1" 503
+2025-10-28 09:10:16 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:10:16 default[20251028t143452]  2025/10/28 09:10:16 Failed to write log "{\"severity\": \"INFO\", \"message\": \"[pid1-nginx] Context cancelled before prerequisites were ready, not complete: [portbind:tcp:localhost:8080 portbind:tcp:localhost:8081 portbind:unix:/tmp/google-config/app.sock] [session:SHK3R4R]\"}\n": write /var/log/google_init.log: file already closed
+2025-10-28 09:10:18 default[20251028t143452]  "GET /favicon.ico HTTP/1.1" 503
+2025-10-28 09:10:18 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:13:40 default[20251028t143452]  "GET / HTTP/1.1" 503
+2025-10-28 09:13:40 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:13:41 default[20251028t143452]  "GET /favicon.ico HTTP/1.1" 500
+2025-10-28 09:17:13 default[20251028t143452]  "GET / HTTP/1.1" 503
+2025-10-28 09:17:13 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:17:15 default[20251028t143452]  "GET /favicon.ico HTTP/1.1" 500
+2025-10-28 09:18:05 default[20251028t143452]  "GET /health HTTP/1.1" 503
+2025-10-28 09:18:05 default[20251028t143452]  /bin/sh: 1: exec: gunicorn: not found
+2025-10-28 09:21:50 default[20251028t144535]  "GET /health HTTP/1.1" 200
+2025-10-28 09:21:52 default[20251028t144535]  INFO:     Started server process [11]
+2025-10-28 09:21:52 default[20251028t144535]  INFO:     Waiting for application startup.
+2025-10-28 09:21:56 default[20251028t144535]  INFO:api.main:Database connection pool initialized successfully
+2025-10-28 09:21:56 default[20251028t144535]  INFO:     Application startup complete.
+2025-10-28 09:21:56 default[20251028t144535]  INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+2025-10-28 09:21:56 default[20251028t144535]  INFO:     169.254.1.1:37260 - "GET /health HTTP/1.1" 200 OK
+2025-10-28 09:22:08 default[20251028t144535]  "GET /search?q=Softlancer HTTP/1.1" 200
+2025-10-28 09:22:09 default[20251028t144535]  INFO:     169.254.1.1:28759 - "GET /search?q=Softlancer HTTP/1.1" 200 OK
+2025-10-28 09:22:12 default[20251028t144535]  "GET / HTTP/1.1" 200
+2025-10-28 09:22:12 default[20251028t144535]  INFO:     169.254.1.1:26393 - "GET / HTTP/1.1" 200 OK
+2025-10-28 09:22:13 default[20251028t144535]  "GET /favicon.ico HTTP/1.1" 404
+2025-10-28 09:22:13 default[20251028t144535]  INFO:     169.254.1.1:29392 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+2025-10-28 09:32:37 default[20251028t144535]  "GET /search?q=manufacturer&search_type=mixed&per_page=10&city=Chennai HTTP/1.1" 200
+2025-10-28 09:32:40 default[20251028t144535]  INFO:     169.254.1.1:30185 - "GET /search?q=manufacturer&search_type=mixed&per_page=10&city=Chennai HTTP/1.1" 200 OK
+2025-10-28 09:32:42 default[20251028t144535]  "GET /search?q=supplier&search_type=mixed&per_page=10&city=Surat HTTP/1.1" 200
+2025-10-28 09:32:43 default[20251028t144535]  INFO:     169.254.1.1:41398 - "GET /search?q=supplier&search_type=mixed&per_page=10&city=Surat HTTP/1.1" 200 OK
+2025-10-28 09:32:44 default[20251028t144535]  "GET /search?q=business&search_type=mixed&per_page=10&city=Mumbai HTTP/1.1" 200
+2025-10-28 09:32:45 default[20251028t144535]  INFO:     169.254.1.1:55939 - "GET /search?q=business&search_type=mixed&per_page=10&city=Mumbai HTTP/1.1" 200 OK
+2025-10-28 09:32:47 default[20251028t144535]  "GET /search?q=manufacturer&search_type=mixed&per_page=10 HTTP/1.1" 200
+2025-10-28 09:32:48 default[20251028t144535]  INFO:     169.254.1.1:51707 - "GET /search?q=manufacturer&search_type=mixed&per_page=10 HTTP/1.1" 200 OK
+2025-10-28 09:38:06 default[20251028t144535]  "GET /search?q=drywall+screws+manufacturer&search_type=mixed&per_page=10&city=Chennai HTTP/1.1" 200
+2025-10-28 09:38:09 default[20251028t144535]  INFO:     169.254.1.1:62258 - "GET /search?q=drywall+screws+manufacturer&search_type=mixed&per_page=10&city=Chennai HTTP/1.1" 200 OK

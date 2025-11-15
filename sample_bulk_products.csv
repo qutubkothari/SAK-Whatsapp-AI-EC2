@@ -1,0 +1,4 @@
+name,sku,price,stock,brand,category,packaging_unit,units_per_carton,image_url
+Product A,SKU001,100.00,50,Brand X,NFF,Box,1000,https://example.com/image1.jpg
+Product B,SKU002,200.00,30,Brand Y,Electronics,Carton,500,https://example.com/image2.jpg
+Product C,SKU003,150.00,100,Brand Z,Hardware,Pallet,2000,https://example.com/image3.jpg

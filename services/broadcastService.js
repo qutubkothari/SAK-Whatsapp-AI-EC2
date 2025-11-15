@@ -1,0 +1,715 @@
+/**
+ * @title Simplified Broadcast Service with Enforced Rate Limiting
+ * @description Uses direct SQL for lock management, compatible with all PostgreSQL versions
+ */
+const { supabase, openai } = require('./config');
+const { sendMessage, sendMessageWithImage } = require('./whatsappService');
+const { parseContactSheet } = require('./scheduleService');
+const chrono = require('chrono-node');
+const crypto = require('crypto');
+
+// Configuration
+const BATCH_SIZE = 5;                         // Exactly 5 messages per batch
+const MESSAGE_DELAY = 12000;                  // 12 seconds between messages
+const BATCH_COOLDOWN = 1 * 60 * 1000;        // 1 minute between batches
+const MAX_RETRIES = 3;
+const LOCK_TIMEOUT = 1 * 60 * 1000;          // 1 minute lock timeout
+
+// Enhanced logging
+const BroadcastLogger = {
+    info: (message, data = {}) => {
+        console.log(`[BROADCAST][INFO] ${message}`, JSON.stringify(data));
+    },
+    error: (message, error, data = {}) => {
+        console.error(`[BROADCAST][ERROR] ${message}`, {
+            error: error?.message || error,
+            stack: error?.stack,
+            ...data
+        });
+    },
+    warn: (message, data = {}) => {
+        console.warn(`[BROADCAST][WARN] ${message}`, JSON.stringify(data));
+    },
+    debug: (message, data = {}) => {
+        if (process.env.DEBUG_BROADCAST === '1') {
+            console.log(`[BROADCAST][DEBUG] ${message}`, JSON.stringify(data));
+        }
+    }
+};
+
+/**
+ * Normalize phone number for Maytapi (digits only)
+ */
+const normalizePhoneNumber = (phone) => {
+    if (!phone) return null;
+    
+    const digits = String(phone).replace(/\D/g, '');
+    
+    if (digits.length < 10) return null;
+    
+    let normalized = digits;
+    if (!normalized.startsWith('91') && normalized.length === 10) {
+        normalized = '91' + normalized;
+    }
+    
+    if (normalized.length < 10 || normalized.length > 15) {
+        return null;
+    }
+    
+    return normalized;
+};
+
+/**
+ * Check if user is unsubscribed
+ */
+const isUnsubscribed = async (phoneNumber) => {
+    try {
+        const { data, error } = await supabase
+            .from('unsubscribed_users')
+            .select('phone_number')
+            .eq('phone_number', phoneNumber)
+            .single();
+            
+        if (error && error.code !== 'PGRST116') {
+            BroadcastLogger.warn('Unsubscribe check failed, assuming subscribed', { 
+                phoneNumber, 
+                error: error.message 
+            });
+            return false;
+        }
+        
+        return !!data;
+    } catch (error) {
+        BroadcastLogger.warn('Unsubscribe check error, assuming subscribed', { 
+            phoneNumber, 
+            error: error.message 
+        });
+        return false;
+    }
+};
+
+/**
+ * Simple lock acquisition using direct database operations
+ */
+const acquireProcessingLock = async (processId) => {
+    try {
+        // First, check current lock status
+        const { data: lockData, error: lockError } = await supabase
+            .from('broadcast_processing_lock')
+            .select('*')
+            .eq('id', 1)
+            .single();
+            
+        if (lockError) {
+            BroadcastLogger.warn('Lock table not found, assuming no lock', { processId });
+            return true;
+        }
+        
+        const now = new Date();
+        const isStale = lockData.last_heartbeat && 
+                       (now.getTime() - new Date(lockData.last_heartbeat).getTime()) > LOCK_TIMEOUT;
+        
+        // If not processing or lock is stale, try to acquire
+        if (!lockData.is_processing || isStale) {
+            const { error: updateError } = await supabase
+                .from('broadcast_processing_lock')
+                .update({
+                    is_processing: true,
+                    process_id: processId,
+                    started_at: now.toISOString(),
+                    last_heartbeat: now.toISOString()
+                })
+                .eq('id', 1);
+                
+            if (updateError) {
+                BroadcastLogger.warn('Failed to acquire lock', { processId, error: updateError.message });
+                return false;
+            }
+            
+            BroadcastLogger.info('Lock acquired successfully', { processId });
+            return true;
+        }
+        
+        BroadcastLogger.info('Lock is already held by another process', { 
+            processId, 
+            currentOwner: lockData.process_id,
+            since: lockData.started_at
+        });
+        return false;
+        
+    } catch (error) {
+        BroadcastLogger.warn('Lock acquisition failed, proceeding anyway', { processId, error: error.message });
+        return true;
+    }
+};
+
+/**
+ * Release processing lock
+ */
+const releaseProcessingLock = async (processId) => {
+    try {
+        const { error } = await supabase
+            .from('broadcast_processing_lock')
+            .update({
+                is_processing: false,
+                process_id: null,
+                started_at: null,
+                last_heartbeat: null
+            })
+            .eq('id', 1)
+            .eq('process_id', processId);
+            
+        if (error) {
+            BroadcastLogger.warn('Failed to release lock', { processId, error: error.message });
+        } else {
+            BroadcastLogger.info('Lock released successfully', { processId });
+        }
+    } catch (error) {
+        BroadcastLogger.warn('Lock release failed', { processId, error: error.message });
+    }
+};
+
+/**
+ * Check batch cooldown period
+ */
+const checkBatchCooldown = async () => {
+    try {
+        const { data: lastBatch, error } = await supabase
+            .from('broadcast_batch_log')
+            .select('completed_at')
+            .not('completed_at', 'is', null)
+            .order('completed_at', { ascending: false })
+            .limit(1);
+            
+        if (error) {
+            BroadcastLogger.warn('Batch log table not found, allowing processing', { error: error.message });
+            return { canProcess: true, reason: 'no_table' };
+        }
+        
+        if (!lastBatch || lastBatch.length === 0) {
+            return { canProcess: true, reason: 'no_previous_batch' };
+        }
+        
+        const lastBatchTime = new Date(lastBatch[0].completed_at);
+        const timeSinceLastBatch = Date.now() - lastBatchTime.getTime();
+        
+        if (timeSinceLastBatch >= BATCH_COOLDOWN) {
+            return { 
+                canProcess: true, 
+                reason: 'cooldown_expired',
+                timeSinceLastBatch: Math.round(timeSinceLastBatch / 1000)
+            };
+        }
+        
+        const remainingMs = BATCH_COOLDOWN - timeSinceLastBatch;
+        return { 
+            canProcess: false, 
+            reason: 'cooldown_active',
+            remainingMs,
+            remainingMinutes: Math.ceil(remainingMs / 60000),
+            lastBatchTime: lastBatchTime.toISOString()
+        };
+        
+    } catch (error) {
+        BroadcastLogger.warn('Cooldown check failed, allowing processing', { error: error.message });
+        return { canProcess: true, reason: 'check_failed' };
+    }
+};
+
+/**
+ * Enhanced queue processing with proper rate limiting
+ */
+const processBroadcastQueue = async () => {
+    const processId = crypto.randomUUID().slice(0, 8);
+    const startTime = Date.now();
+    
+    BroadcastLogger.info('Attempting to start queue processing', { 
+        processId,
+        batchSize: BATCH_SIZE,
+        cooldownMinutes: BATCH_COOLDOWN / 60000
+    });
+    
+    try {
+        // Step 1: Try to acquire global processing lock
+        const lockAcquired = await acquireProcessingLock(processId);
+        if (!lockAcquired) {
+            BroadcastLogger.info('Another process is already handling broadcasts', { processId });
+            return { processed: 0, succeeded: 0, failed: 0, skipped: 'locked' };
+        }
+        
+        // Step 2: Check batch cooldown
+        const cooldownCheck = await checkBatchCooldown();
+        if (!cooldownCheck.canProcess) {
+            BroadcastLogger.info('Batch cooldown active, waiting for next window', {
+                processId,
+                remainingMinutes: cooldownCheck.remainingMinutes,
+                lastBatchTime: cooldownCheck.lastBatchTime
+            });
+            
+            await releaseProcessingLock(processId);
+            return { 
+                processed: 0, 
+                succeeded: 0, 
+                failed: 0, 
+                skipped: 'cooldown',
+                nextBatchIn: cooldownCheck.remainingMinutes + ' minutes'
+            };
+        }
+        
+        BroadcastLogger.info('Cooldown check passed, starting batch processing', { 
+            processId, 
+            reason: cooldownCheck.reason
+        });
+        
+        // Step 3: Get pending messages
+        const { data: pending, error } = await supabase
+            .from('bulk_schedules')
+            .select('*')
+            .eq('status', 'pending')
+            .lte('scheduled_at', new Date().toISOString())  // ✅ Correct
+            .lt('retry_count', MAX_RETRIES)
+            .order('scheduled_at')  // ✅ Correct
+            .order('sequence_number')
+            .limit(BATCH_SIZE);
+            
+        if (error) {
+            BroadcastLogger.error('Failed to fetch pending messages', error, { processId });
+            await releaseProcessingLock(processId);
+            throw error;
+        }
+        
+        if (!pending || pending.length === 0) {
+            BroadcastLogger.info('No pending messages to process', { processId });
+            await releaseProcessingLock(processId);
+            return { processed: 0, succeeded: 0, failed: 0 };
+        }
+        
+        // Step 4: Record batch start
+        const { data: batchLog, error: batchError } = await supabase
+            .from('broadcast_batch_log')
+            .insert({
+                process_id: processId,
+                started_at: new Date().toISOString(),
+                status: 'processing',
+                batch_size: pending.length
+            })
+            .select('id')
+            .single();
+            
+        const batchLogId = batchLog?.id || null;
+        if (batchError) {
+            BroadcastLogger.warn('Failed to record batch start', { processId, error: batchError.message });
+        }
+        
+        BroadcastLogger.info('STARTING BATCH WITH ENFORCED 5-MINUTE COOLDOWN', {
+            processId,
+            count: pending.length,
+            campaigns: [...new Set(pending.map(m => m.campaign_name))],
+            batchLogId,
+            estimatedDuration: Math.round((pending.length * MESSAGE_DELAY) / 1000) + ' seconds',
+            nextBatchAllowedAt: new Date(Date.now() + BATCH_COOLDOWN).toISOString()
+        });
+        
+        let succeeded = 0;
+        let failed = 0;
+        
+        // Step 5: Process messages with proper delays
+        for (let i = 0; i < pending.length; i++) {
+            const message = pending[i];
+            const messageStartTime = Date.now();
+            
+            try {
+                // Mark as processing
+                await supabase
+                    .from('bulk_schedules')
+                    .update({ 
+                        status: 'processing',
+                        processed_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', message.id);
+                
+                const phoneNumber = message.to_phone_number;
+                if (!phoneNumber) {
+                    throw new Error('Phone number missing from record');
+                }
+                
+                // Check unsubscribe status
+                if (await isUnsubscribed(phoneNumber)) {
+                    await supabase
+                        .from('bulk_schedules')
+                        .update({ 
+                            status: 'skipped',
+                            error_message: 'User unsubscribed',
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', message.id);
+                    
+                    BroadcastLogger.info('Message skipped - user unsubscribed', {
+                        processId,
+                        messageId: message.id,
+                        messageNumber: i + 1,
+                        totalMessages: pending.length
+                    });
+                    continue;
+                }
+                
+                const messageText = message.message_body || message.message_text;
+                const mediaUrl = message.media_url || message.image_url;
+                
+                if (!messageText) {
+                    throw new Error('Message text missing from record');
+                }
+                
+                // Send message
+                BroadcastLogger.info(`Sending message ${i + 1}/${pending.length}`, {
+                    processId,
+                    messageId: message.id,
+                    campaign: message.campaign_name,
+                    hasMedia: !!mediaUrl
+                });
+                
+                if (mediaUrl) {
+                    await sendMessageWithImage(phoneNumber, messageText, mediaUrl);
+                } else {
+                    await sendMessage(phoneNumber, messageText);
+                }
+                
+                // Mark as sent
+                await supabase
+                    .from('bulk_schedules')
+                    .update({ 
+                        status: 'sent',
+                        delivered_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                        delivery_status: 'delivered'
+                    })
+                    .eq('id', message.id);
+                
+                succeeded++;
+                
+                BroadcastLogger.info('Message sent successfully', {
+                    processId,
+                    messageId: message.id,
+                    campaign: message.campaign_name,
+                    duration: Date.now() - messageStartTime,
+                    messageNumber: i + 1,
+                    totalMessages: pending.length
+                });
+                
+            } catch (error) {
+                failed++;
+                const newRetryCount = (message.retry_count || 0) + 1;
+                
+                const updateData = {
+                    retry_count: newRetryCount,
+                    error_message: error.message,
+                    updated_at: new Date().toISOString()
+                };
+                
+                if (newRetryCount >= MAX_RETRIES) {
+                    updateData.status = 'failed';
+                    updateData.delivery_status = 'failed';
+                } else {
+                    updateData.status = 'pending';
+                    // Schedule retry after next batch cooldown
+                    const nextRetryAt = new Date(Date.now() + BATCH_COOLDOWN + (30000 * Math.pow(2, newRetryCount - 1)));
+                    updateData.scheduled_at = nextRetryAt.toISOString();
+                }
+                
+                await supabase
+                    .from('bulk_schedules')
+                    .update(updateData)
+                    .eq('id', message.id);
+                
+                BroadcastLogger.error('Message sending failed', error, {
+                    processId,
+                    messageId: message.id,
+                    retryCount: newRetryCount,
+                    willRetry: newRetryCount < MAX_RETRIES,
+                    messageNumber: i + 1
+                });
+            }
+            
+            // Apply delay between messages (except after the last message)
+            if (i < pending.length - 1) {
+                BroadcastLogger.debug(`Waiting ${MESSAGE_DELAY/1000} seconds before next message`, {
+                    processId,
+                    currentMessage: i + 1,
+                    remainingMessages: pending.length - i - 1
+                });
+                await new Promise(resolve => setTimeout(resolve, MESSAGE_DELAY));
+            }
+        }
+        
+        // Step 6: Record batch completion and enforce cooldown
+        if (batchLogId) {
+            await supabase
+                .from('broadcast_batch_log')
+                .update({
+                    completed_at: new Date().toISOString(),
+                    status: 'completed',
+                    messages_sent: succeeded,
+                    messages_failed: failed
+                })
+                .eq('id', batchLogId);
+        }
+        
+        await releaseProcessingLock(processId);
+        
+        const totalDuration = Date.now() - startTime;
+        const nextBatchTime = new Date(Date.now() + BATCH_COOLDOWN);
+        
+        BroadcastLogger.info('BATCH COMPLETED - 5-MINUTE COOLDOWN NOW ENFORCED', {
+            processId,
+            duration: totalDuration,
+            processed: pending.length,
+            succeeded,
+            failed,
+            nextBatchAllowedAt: nextBatchTime.toISOString(),
+            cooldownDurationMinutes: BATCH_COOLDOWN / 60000
+        });
+        
+        // Check remaining messages
+        const { data: remainingMessages } = await supabase
+            .from('bulk_schedules')
+            .select('count(*)')
+            .eq('status', 'pending')
+            .lte('scheduled_at', new Date().toISOString())
+            .lt('retry_count', MAX_RETRIES);
+            
+        if (remainingMessages && remainingMessages[0]?.count > 0) {
+            BroadcastLogger.info(`${remainingMessages[0].count} messages waiting for next batch window`, {
+                processId,
+                nextProcessingTime: nextBatchTime.toISOString(),
+                remainingMessages: remainingMessages[0].count
+            });
+        }
+        
+        return { 
+            processed: pending.length, 
+            succeeded, 
+            failed,
+            nextBatchAt: nextBatchTime.toISOString(),
+            cooldownEnforced: true
+        };
+        
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        BroadcastLogger.error('Queue processing failed', error, { processId, duration });
+        await releaseProcessingLock(processId);
+        throw error;
+    }
+};
+
+/**
+ * Enhanced broadcast scheduling (same as before)
+ */
+const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneNumbers, imageUrl = null) => {
+    const startTime = Date.now();
+    const operationId = crypto.randomUUID().slice(0, 8);
+    
+    BroadcastLogger.info('Starting broadcast scheduling', {
+        operationId,
+        tenantId,
+        campaignName,
+        phoneCount: phoneNumbers.length,
+        hasImage: !!imageUrl,
+        scheduledFor: sendAt
+    });
+    
+    try {
+        // Input validation
+        if (!tenantId || !campaignName || !message || !sendAt) {
+            throw new Error('Missing required parameters');
+        }
+        
+        if (!Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+            return 'No phone numbers provided to schedule this broadcast.';
+        }
+        
+        if (phoneNumbers.length > 10000) {
+            return 'Cannot schedule broadcast to more than 10,000 contacts at once. Please split into smaller batches.';
+        }
+        
+        // Validate and normalize phone numbers
+        const validatedNumbers = phoneNumbers
+            .map(normalizePhoneNumber)
+            .filter(phone => phone !== null);
+            
+        if (validatedNumbers.length === 0) {
+            return 'No valid phone numbers found. Please check the format and try again.';
+        }
+        
+        // Filter out unsubscribed users
+        const validRecipients = [];
+        for (const phone of validatedNumbers) {
+            if (!(await isUnsubscribed(phone))) {
+                validRecipients.push(phone);
+            }
+        }
+        
+        if (validRecipients.length === 0) {
+            return 'All recipients have unsubscribed or have invalid phone numbers. No messages were scheduled.';
+        }
+        
+        BroadcastLogger.info('Recipients filtered', {
+            operationId,
+            total: phoneNumbers.length,
+            valid: validRecipients.length,
+            filtered: phoneNumbers.length - validRecipients.length
+        });
+        
+        // Create broadcast records
+        const campaignId = crypto.randomUUID();
+        const currentTime = new Date().toISOString();
+        
+        const schedules = validRecipients.map((phone, index) => ({
+            tenant_id: tenantId,
+            to_phone_number: phone,
+            message_text: message.slice(0, 4096),
+            message_body: message.slice(0, 4096),
+            image_url: imageUrl,
+            media_url: imageUrl,
+            scheduled_at: sendAt,
+            campaign_id: campaignId,
+            campaign_name: campaignName.slice(0, 255),
+            status: 'pending',
+            created_at: currentTime,
+            updated_at: currentTime,
+            retry_count: 0,
+            sequence_number: index + 1,
+            delivery_status: 'pending'
+        }));
+        
+        // Insert in batches
+        const INSERT_BATCH_SIZE = 1000;
+        let insertedCount = 0;
+        
+        for (let i = 0; i < schedules.length; i += INSERT_BATCH_SIZE) {
+            const batch = schedules.slice(i, i + INSERT_BATCH_SIZE);
+            const { error } = await supabase.from('bulk_schedules').insert(batch);
+            
+            if (error) {
+                BroadcastLogger.error('Database insert failed', error, {
+                    operationId,
+                    batchStart: i,
+                    batchSize: batch.length
+                });
+                throw new Error(`Database insertion failed: ${error.message}`);
+            }
+            
+            insertedCount += batch.length;
+        }
+        
+        const duration = Date.now() - startTime;
+        const formattedDate = new Date(sendAt).toLocaleString();
+        
+        BroadcastLogger.info('Broadcast scheduled successfully', {
+            operationId,
+            campaignId,
+            duration,
+            recipientCount: validRecipients.length,
+            scheduledFor: formattedDate
+        });
+        
+        return `Successfully scheduled the "${campaignName}" broadcast for ${formattedDate} to ${validRecipients.length} contacts. Campaign ID: ${campaignId.slice(0, 8)}`;
+        
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        BroadcastLogger.error('Broadcast scheduling failed', error, {
+            operationId,
+            tenantId,
+            campaignName,
+            duration
+        });
+        
+        return `An error occurred while scheduling the broadcast: ${error.message}. Please try again or contact support.`;
+    }
+};
+
+/**
+ * Generate AI content for broadcasts
+ */
+const generateBroadcastContent = async (topic) => {
+    try {
+        const model = process.env.AI_MODEL_SMART || 'gpt-4o';
+        
+        const response = await openai.chat.completions.create({
+            model,
+            messages: [{
+                role: "system",
+                content: "You are a marketing copywriter. Write a short, engaging, and friendly WhatsApp broadcast message based on the following topic. Include a clear call to action. Keep it under 160 characters for better engagement. Do not include placeholders like '[Your Business Name]'."
+            }, {
+                role: "user",
+                content: topic
+            }],
+            temperature: 0.7,
+            max_tokens: 150
+        });
+        
+        const content = response.choices[0].message.content.trim();
+        BroadcastLogger.info('Content generated successfully', { 
+            topic, 
+            contentLength: content.length 
+        });
+        
+        return content;
+    } catch (error) {
+        BroadcastLogger.error('Failed to generate broadcast content', error, { topic });
+        return 'There was an error generating content. Please try again or create your own message.';
+    }
+};
+
+/**
+ * Schedule broadcast to segment
+ */
+const scheduleBroadcastToSegment = async (tenantId, segmentName, campaignName, message, timeString, imageUrl = null) => {
+    try {
+        const { data: segment, error: segError } = await supabase
+            .from('customer_segments')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('segment_name', segmentName)
+            .single();
+            
+        if (segError || !segment) {
+            return `Could not find a customer segment named "${segmentName}".`;
+        }
+        
+        const { data: conversations, error: convError } = await supabase
+            .from('conversation_segments')
+            .select('conversation:conversations (end_user_phone)')
+            .eq('segment_id', segment.id);
+            
+        if (convError) throw convError;
+        
+        const phoneNumbers = conversations
+            .map(c => c.conversation?.end_user_phone)
+            .filter(Boolean);
+            
+        if (phoneNumbers.length === 0) {
+            return `The segment "${segmentName}" is currently empty. No messages were scheduled.`;
+        }
+        
+        const sendAt = chrono.parseDate(timeString, new Date(), { forwardDate: true });
+        if (!sendAt) {
+            return "I couldn't understand that time. Please try again (e.g., 'tomorrow at 10am').";
+        }
+        
+        return await scheduleBroadcast(tenantId, campaignName, message, sendAt.toISOString(), phoneNumbers, imageUrl);
+        
+    } catch (error) {
+        BroadcastLogger.error('Segment broadcast failed', error);
+        return 'An error occurred while scheduling the broadcast to the segment.';
+    }
+};
+
+module.exports = {
+    generateBroadcastContent,
+    scheduleBroadcast,
+    scheduleBroadcastToSegment,
+    parseContactSheet,
+    processBroadcastQueue,
+    BroadcastLogger
+};
