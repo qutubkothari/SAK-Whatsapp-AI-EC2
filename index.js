@@ -241,7 +241,7 @@ app.get('/health', async (req, res) => {
     const dbStart = Date.now();
     const { data, error } = await supabase
       .from('tenants')
-      .select('count(*)')
+      .select('id', { count: 'exact', head: true })
       .limit(1);
     
     health.services.database = {
