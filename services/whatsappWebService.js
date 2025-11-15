@@ -80,17 +80,17 @@ async function initializeClient(tenantId) {
                 const info = client.info;
                 console.log(`[WA_WEB] Phone info:`, info.wid.user);
                 
-                // Update database
+                // Update database - use update instead of upsert to avoid conflict
                 const { data, error } = await supabase
                     .from('whatsapp_connections')
-                    .upsert({
-                        tenant_id: tenantId,
+                    .update({
                         phone_number: info.wid.user,
                         status: 'connected',
                         qr_code: null,
                         connected_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
-                    });
+                    })
+                    .eq('tenant_id', tenantId);
                 
                 if (error) {
                     console.error(`[WA_WEB] Database update error for tenant ${tenantId}:`, error);
