@@ -6,7 +6,7 @@
 const { supabase } = require('./config');
 const crypto = require('crypto');
 
-const WEB_DASHBOARD_URL = process.env.WEB_DASHBOARD_URL || 'https://sak-whatsapp-ai-sales-assist.wl.r.appspot.com/dashboard.html'; // The base URL of your web app
+const WEB_DASHBOARD_URL = process.env.WEB_DASHBOARD_URL || 'http://13.62.57.240:8080/dashboard.html'; // EC2 deployment
 
 /**
  * Generates a secure, random token for web authentication.
