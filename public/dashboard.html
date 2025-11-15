@@ -2096,15 +2096,44 @@
                                 </button>
                             </div>
 
-                            <!-- iPhone Paste Mode (NOW FIRST) -->
+                            <!-- Upload Mode (Excel/CSV) -->
                             <div id="uploadMode">
+                                <!-- Google Contacts Instructions -->
+                                <div class="bg-gradient-to-r from-blue-50 to-green-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+                                    <div class="flex items-start">
+                                        <i class="fab fa-google text-blue-600 text-2xl mr-3 mt-1"></i>
+                                        <div class="flex-1">
+                                            <p class="font-bold text-gray-800 mb-2">
+                                                <i class="fas fa-star text-yellow-500 mr-1"></i>Import from Google Contacts (Easiest!)
+                                            </p>
+                                            <ol class="list-decimal list-inside space-y-1 text-xs text-gray-700 mb-3">
+                                                <li>Open <a href="https://contacts.google.com" target="_blank" class="text-blue-600 hover:underline font-semibold">contacts.google.com</a></li>
+                                                <li>Click "Export" on the left sidebar</li>
+                                                <li>Select "Google CSV" format</li>
+                                                <li>Click "Export" button → Downloads a CSV file</li>
+                                                <li>Upload that CSV file below 👇</li>
+                                            </ol>
+                                            <div class="bg-white/50 rounded px-3 py-2 text-xs text-gray-600">
+                                                <i class="fas fa-info-circle text-blue-500 mr-1"></i>
+                                                <strong>Also works with:</strong> Excel files, iPhone exports, or any CSV with phone numbers
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition">
                                     <input type="file" id="recipientsFile" accept=".xlsx,.xls,.csv" 
                                         class="hidden" onchange="handleFileUpload(event)">
                                     <label for="recipientsFile" class="cursor-pointer">
-                                        <i class="fas fa-file-excel text-4xl text-gray-400 mb-2"></i>
-                                        <p class="text-sm text-gray-600">Click to upload Excel file</p>
-                                        <p class="text-xs text-gray-500 mt-1">Excel should have a "phone" or "number" column</p>
+                                        <i class="fas fa-file-upload text-4xl text-indigo-500 mb-2"></i>
+                                        <p class="text-sm font-semibold text-gray-700">Click to Upload CSV/Excel File</p>
+                                        <p class="text-xs text-gray-500 mt-2">
+                                            <i class="fas fa-check-circle text-green-500 mr-1"></i>Google CSV
+                                            <span class="mx-2">•</span>
+                                            <i class="fas fa-check-circle text-green-500 mr-1"></i>Excel (.xlsx, .xls)
+                                            <span class="mx-2">•</span>
+                                            <i class="fas fa-check-circle text-green-500 mr-1"></i>Any CSV
+                                        </p>
                                     </label>
                                     <div id="fileInfo" class="mt-3 text-sm text-green-600 hidden"></div>
                                 </div>
@@ -2771,14 +2800,45 @@
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 const jsonData = XLSX.utils.sheet_to_json(firstSheet);
                 
-                // Extract phone numbers (look for "phone", "number", "mobile", "whatsapp" columns)
-                uploadedRecipients = jsonData.map(row => {
-                    const phone = row.phone || row.number || row.mobile || row.whatsapp || row.Phone || row.Number || row.Mobile || row.WhatsApp;
-                    return phone ? String(phone).replace(/\D/g, '') : null; // Clean and convert to string
-                }).filter(phone => phone && phone.length >= 10); // Filter valid phones
+                // Extract phone numbers from multiple possible columns
+                // Google Contacts format: "Phone 1 - Value", "Phone 2 - Value", etc.
+                // Also supports: phone, number, mobile, whatsapp, cell, telephone
+                const phoneColumns = [
+                    'phone', 'number', 'mobile', 'whatsapp', 'cell', 'telephone',
+                    'Phone', 'Number', 'Mobile', 'WhatsApp', 'Cell', 'Telephone',
+                    'Phone 1 - Value', 'Phone 2 - Value', 'Phone 3 - Value',
+                    'phone 1 - value', 'phone 2 - value', 'phone 3 - value'
+                ];
+                
+                const phones = [];
+                jsonData.forEach(row => {
+                    // Try all possible column names
+                    for (const col of phoneColumns) {
+                        if (row[col]) {
+                            const cleaned = String(row[col]).replace(/\D/g, '');
+                            if (cleaned && cleaned.length >= 10) {
+                                phones.push(cleaned);
+                            }
+                        }
+                    }
+                    
+                    // Also check all columns that contain "phone" or "mobile" in the name
+                    Object.keys(row).forEach(key => {
+                        if ((key.toLowerCase().includes('phone') || key.toLowerCase().includes('mobile')) && row[key]) {
+                            const cleaned = String(row[key]).replace(/\D/g, '');
+                            if (cleaned && cleaned.length >= 10 && !phones.includes(cleaned)) {
+                                phones.push(cleaned);
+                            }
+                        }
+                    });
+                });
+                
+                // Remove duplicates
+                uploadedRecipients = [...new Set(phones)];
 
                 if (uploadedRecipients.length === 0) {
-                    showNotification('No valid phone numbers found in Excel file', 'error');
+                    showNotification('❌ No valid phone numbers found. Make sure the file has phone numbers in any column.', 'error');
+
                     return;
                 }
 
@@ -2797,10 +2857,10 @@
                 ).join('');
                 recipientsList.classList.remove('hidden');
                 
-                showNotification(`Loaded ${uploadedRecipients.length} phone numbers`, 'success');
+                showNotification(`✅ Successfully loaded ${uploadedRecipients.length} phone numbers!`, 'success');
             } catch (err) {
-                console.error('Excel read error:', err);
-                showNotification('Error reading Excel file. Make sure it has a "phone" or "number" column.', 'error');
+                console.error('File read error:', err);
+                showNotification('❌ Error reading file. Supported formats: CSV, Excel (.xlsx, .xls)', 'error');
             }
         };
         reader.readAsArrayBuffer(file);
