@@ -1075,8 +1075,18 @@ app.use((err, req, res, next) => {
 });
 
 // --- Start Server ---
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
     console.log(`Server listening on port ${PORT}`);
+    
+    // Auto-initialize WhatsApp Web clients for connected tenants
+    try {
+        const { autoInitializeConnectedClients } = require('./services/whatsappWebService');
+        console.log('[STARTUP] Auto-initializing WhatsApp Web clients...');
+        await autoInitializeConnectedClients();
+        console.log('[STARTUP] WhatsApp Web auto-initialization complete');
+    } catch (error) {
+        console.error('[STARTUP] Failed to auto-initialize WhatsApp Web clients:', error.message);
+    }
 });
 
 console.log('🧪 Test endpoints loaded:');

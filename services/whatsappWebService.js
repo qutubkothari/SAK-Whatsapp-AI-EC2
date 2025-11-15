@@ -30,9 +30,13 @@ async function initializeClient(tenantId) {
     }
 
     try {
-        console.log(`[WA_WEB] Creating client without persistent auth (fresh QR each time)`);
+        console.log(`[WA_WEB] Creating client WITH persistent auth (LocalAuth)`);
 
         const client = new Client({
+            authStrategy: new LocalAuth({
+                clientId: tenantId,
+                dataPath: path.join(process.cwd(), '.wwebjs_auth')
+            }),
             puppeteer: {
                 headless: true,
                 args: [
@@ -332,6 +336,46 @@ function getAllConnections() {
     return connections;
 }
 
+/**
+ * Auto-initialize clients for tenants with connected status on server startup
+ */
+async function autoInitializeConnectedClients() {
+    try {
+        console.log('[WA_WEB] Auto-initializing connected clients on server startup...');
+        
+        const { data: connections, error } = await supabase
+            .from('whatsapp_connections')
+            .select('tenant_id, status')
+            .eq('status', 'connected');
+        
+        if (error) {
+            console.error('[WA_WEB] Error fetching connected clients:', error);
+            return;
+        }
+        
+        if (!connections || connections.length === 0) {
+            console.log('[WA_WEB] No connected clients to auto-initialize');
+            return;
+        }
+        
+        console.log(`[WA_WEB] Found ${connections.length} connected client(s), initializing...`);
+        
+        // Initialize each connected tenant's client
+        for (const conn of connections) {
+            console.log(`[WA_WEB] Auto-initializing client for tenant: ${conn.tenant_id}`);
+            try {
+                await initializeClient(conn.tenant_id);
+            } catch (error) {
+                console.error(`[WA_WEB] Failed to auto-initialize tenant ${conn.tenant_id}:`, error.message);
+            }
+        }
+        
+        console.log('[WA_WEB] Auto-initialization complete');
+    } catch (error) {
+        console.error('[WA_WEB] Error in autoInitializeConnectedClients:', error);
+    }
+}
+
 module.exports = {
     initializeClient,
     getQRCode,
@@ -339,6 +383,8 @@ module.exports = {
     disconnectClient,
     sendWebMessage,
     sendWebImageMessage,
+    sendWebMessageWithMedia: sendWebImageMessage, // Alias for broadcast compatibility
     isRegisteredUser,
-    getAllConnections
+    getAllConnections,
+    autoInitializeConnectedClients
 };
