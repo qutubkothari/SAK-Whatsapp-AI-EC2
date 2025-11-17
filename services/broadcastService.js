@@ -79,6 +79,72 @@ const sendMessageSmart = async (tenantId, phoneNumber, messageText, mediaUrl = n
 };
 
 /**
+ * Personalize message with contact and tenant data
+ */
+const personalizeMessage = async (messageTemplate, phoneNumber, tenantId) => {
+    try {
+        let personalizedMessage = messageTemplate;
+        
+        // Get tenant business name
+        let businessName = 'Our Business';
+        try {
+            const { data: tenant } = await supabase
+                .from('tenants')
+                .select('business_name')
+                .eq('id', tenantId)
+                .single();
+            if (tenant?.business_name) {
+                businessName = tenant.business_name;
+            }
+        } catch (err) {
+            BroadcastLogger.warn('Could not fetch tenant name', { tenantId });
+        }
+        
+        // Try to get contact name from conversations or customers
+        let contactName = null;
+        try {
+            const { data: conversation } = await supabase
+                .from('conversations')
+                .select('end_user_name')
+                .eq('tenant_id', tenantId)
+                .eq('end_user_phone', phoneNumber)
+                .single();
+            
+            if (conversation?.end_user_name) {
+                contactName = conversation.end_user_name;
+            }
+        } catch (err) {
+            // Try customers table
+            try {
+                const { data: customer } = await supabase
+                    .from('customers')
+                    .select('name')
+                    .eq('tenant_id', tenantId)
+                    .eq('phone', phoneNumber)
+                    .single();
+                
+                if (customer?.name) {
+                    contactName = customer.name;
+                }
+            } catch (err2) {
+                BroadcastLogger.debug('No name found for contact', { phoneNumber });
+            }
+        }
+        
+        // Replace variables
+        personalizedMessage = personalizedMessage
+            .replace(/\{name\}/gi, contactName || 'there')
+            .replace(/\{phone\}/gi, phoneNumber)
+            .replace(/\{business\}/gi, businessName);
+        
+        return personalizedMessage;
+    } catch (error) {
+        BroadcastLogger.error('Message personalization failed', error);
+        return messageTemplate; // Return original if personalization fails
+    }
+};
+
+/**
  * Normalize phone number for Maytapi (digits only)
  */
 const normalizePhoneNumber = (phone) => {
@@ -402,19 +468,27 @@ const processBroadcastQueue = async () => {
                     throw new Error('Message text missing from record');
                 }
                 
+                // Personalize message
+                const personalizedMessage = await personalizeMessage(
+                    messageText,
+                    phoneNumber,
+                    message.tenant_id
+                );
+                
                 // Send message
                 BroadcastLogger.info(`Sending message ${i + 1}/${pending.length}`, {
                     processId,
                     messageId: message.id,
                     campaign: message.campaign_name,
-                    hasMedia: !!mediaUrl
+                    hasMedia: !!mediaUrl,
+                    personalized: personalizedMessage !== messageText
                 });
                 
                 // Use smart sender with tenant ID
                 const sendResult = await sendMessageSmart(
                     message.tenant_id, 
                     phoneNumber, 
-                    messageText, 
+                    personalizedMessage, 
                     mediaUrl
                 );
                 
