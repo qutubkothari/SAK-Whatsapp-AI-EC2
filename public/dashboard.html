@@ -2059,7 +2059,7 @@
         const newLimit = parseInt(limitInput.value);
         
         if (!newLimit || newLimit < 100 || newLimit > 10000) {
-            showStatus('Daily limit must be between 100 and 10,000', 'error');
+            showNotification('Daily limit must be between 100 and 10,000', 'warning');
             return;
         }
         
@@ -2073,15 +2073,15 @@
             const data = await response.json();
             
             if (data.success) {
-                showStatus(`✅ Daily limit updated to ${newLimit} messages/day`, 'success');
+                showNotification(`✅ Daily limit updated to ${newLimit} messages/day`, 'success');
                 // Reload to show updated banner
                 setTimeout(() => loadBroadcast(), 1000);
             } else {
-                showStatus(data.error || 'Failed to update daily limit', 'error');
+                showNotification(data.error || 'Failed to update daily limit', 'error');
             }
         } catch (error) {
             console.error('Error updating daily limit:', error);
-            showStatus('Failed to update daily limit', 'error');
+            showNotification('Failed to update daily limit', 'error');
         }
     }
 

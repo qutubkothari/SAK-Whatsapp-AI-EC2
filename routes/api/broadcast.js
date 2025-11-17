@@ -699,6 +699,20 @@ router.put('/daily-limit/:tenantId', async (req, res) => {
             });
         }
         
+        // Check if column exists first
+        const { error: checkError } = await supabase
+            .from('tenants')
+            .select('daily_message_limit')
+            .eq('id', tenantId)
+            .single();
+        
+        if (checkError && checkError.message.includes('column')) {
+            return res.status(400).json({
+                success: false,
+                error: 'Please run the database migration first. See MULTIDAY_BROADCAST_GUIDE.md'
+            });
+        }
+        
         const { error } = await supabase
             .from('tenants')
             .update({ daily_message_limit: dailyLimit })
