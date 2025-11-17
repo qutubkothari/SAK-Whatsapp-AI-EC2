@@ -634,8 +634,6 @@ const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneN
                 percentUsed: Math.round((newTotal / dailyLimit) * 100)
             });
         }
-            return 'Cannot schedule broadcast to more than 10,000 contacts at once. Please split into smaller batches.';
-        }
         
         // Validate and normalize phone numbers
         const validatedNumbers = phoneNumbers
