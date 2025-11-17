@@ -19,19 +19,57 @@ router.post('/login', async (req, res) => {
         }
 
         // Clean phone number (remove spaces, dashes, etc.)
-        const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+        let cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+        
+        // Remove @c.us if user includes it
+        cleanPhone = cleanPhone.replace(/@c\.us$/i, '');
 
         console.log('[AUTH] Login attempt for phone:', cleanPhone);
 
-        // Find tenant by phone number
-        const { data: tenant, error: tenantError } = await supabase
-            .from('tenants')
-            .select('*')
-            .eq('phone_number', cleanPhone)
-            .single();
+        // Try multiple phone number formats to find tenant
+        // Format 1: Just the number (e.g., 919537653927)
+        // Format 2: With @c.us suffix (e.g., 919537653927@c.us)
+        const phoneFormats = [
+            cleanPhone,
+            `${cleanPhone}@c.us`
+        ];
 
-        if (tenantError || !tenant) {
-            console.log('[AUTH] Tenant not found:', cleanPhone);
+        let tenant = null;
+        let tenantError = null;
+
+        // Try each phone format
+        for (const phoneFormat of phoneFormats) {
+            const { data, error } = await supabase
+                .from('tenants')
+                .select('*')
+                .eq('phone_number', phoneFormat)
+                .single();
+            
+            if (data && !error) {
+                tenant = data;
+                break;
+            }
+            tenantError = error;
+        }
+
+        // Also try owner_whatsapp_number field
+        if (!tenant) {
+            for (const phoneFormat of phoneFormats) {
+                const { data, error } = await supabase
+                    .from('tenants')
+                    .select('*')
+                    .eq('owner_whatsapp_number', phoneFormat)
+                    .single();
+                
+                if (data && !error) {
+                    tenant = data;
+                    break;
+                }
+            }
+        }
+
+        if (!tenant) {
+            console.log('[AUTH] Tenant not found for any format:', phoneFormats);
             return res.status(401).json({
                 success: false,
                 error: 'Invalid phone number or password'
