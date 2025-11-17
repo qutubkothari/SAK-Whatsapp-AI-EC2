@@ -11,10 +11,16 @@ const crypto = require('crypto');
 
 // Configuration
 const BATCH_SIZE = 5;                         // Exactly 5 messages per batch
-const MESSAGE_DELAY = 12000;                  // 12 seconds between messages
+const BASE_MESSAGE_DELAY = 10000;             // Base 10 seconds between messages
+const MAX_RANDOM_DELAY = 8000;                // Add up to 8 seconds random delay (10-18 sec total)
 const BATCH_COOLDOWN = 1 * 60 * 1000;        // 1 minute between batches
 const MAX_RETRIES = 3;
 const LOCK_TIMEOUT = 1 * 60 * 1000;          // 1 minute lock timeout
+
+// Helper function for human-like random delays
+const getHumanDelay = () => {
+    return BASE_MESSAGE_DELAY + Math.floor(Math.random() * MAX_RANDOM_DELAY);
+};
 
 // Enhanced logging
 const BroadcastLogger = {
@@ -141,6 +147,103 @@ const personalizeMessage = async (messageTemplate, phoneNumber, tenantId) => {
     } catch (error) {
         BroadcastLogger.error('Message personalization failed', error);
         return messageTemplate; // Return original if personalization fails
+    }
+};
+
+/**
+ * Get random greeting template
+ */
+const getRandomGreeting = async (tenantId) => {
+    try {
+        // Get active templates for tenant
+        const { data: templates, error } = await supabase
+            .from('greeting_templates')
+            .select('id, template_text')
+            .eq('is_active', true)
+            .or(`tenant_id.eq.${tenantId},tenant_id.is.null`); // Get tenant-specific or default
+        
+        if (error || !templates || templates.length === 0) {
+            // Fallback greetings if database query fails
+            const fallbackGreetings = [
+                'Hi {name}! 👋',
+                'Hello {name}! 😊',
+                'Hey {name}!',
+                'Good day {name}!',
+                'Hi there {name}!',
+                'Hello {name}, hope you\'re doing well!',
+                'Hey {name}, how are you?',
+                'Hi {name}, hope this message finds you well!',
+                'Hello dear {name}!',
+                'Hi {name}! 🌟'
+            ];
+            return fallbackGreetings[Math.floor(Math.random() * fallbackGreetings.length)];
+        }
+        
+        // Select random template
+        const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
+        
+        // Update usage count
+        await supabase
+            .from('greeting_templates')
+            .update({ usage_count: supabase.raw('usage_count + 1') })
+            .eq('id', randomTemplate.id);
+        
+        return randomTemplate.template_text;
+    } catch (error) {
+        BroadcastLogger.error('Failed to get random greeting', error);
+        return 'Hi {name}!'; // Safe fallback
+    }
+};
+
+/**
+ * Add human-like variations to message timing and content
+ */
+const humanizeMessage = async (messageTemplate, phoneNumber, tenantId) => {
+    try {
+        // Get random greeting
+        const greeting = await getRandomGreeting(tenantId);
+        
+        // Check if message already has a greeting
+        const hasGreeting = /^(hi|hello|hey|good day|greetings)/i.test(messageTemplate.trim());
+        
+        let humanizedMessage = messageTemplate;
+        
+        if (!hasGreeting) {
+            // Add random greeting at the start
+            humanizedMessage = `${greeting}\n\n${messageTemplate}`;
+        }
+        
+        // Apply personalization
+        humanizedMessage = await personalizeMessage(humanizedMessage, phoneNumber, tenantId);
+        
+        // Add random variations
+        const variations = [
+            '', // No variation
+            ' 😊',
+            ' 🙂',
+            '!',
+            '.',
+        ];
+        
+        // 30% chance to add variation at the end
+        if (Math.random() > 0.7) {
+            const randomVariation = variations[Math.floor(Math.random() * variations.length)];
+            humanizedMessage += randomVariation;
+        }
+        
+        return {
+            message: humanizedMessage,
+            greeting: greeting,
+            delay: Math.floor(Math.random() * 3000) + 1000 // Random delay 1-4 seconds
+        };
+    } catch (error) {
+        BroadcastLogger.error('Message humanization failed', error);
+        const basicMessage = await personalizeMessage(messageTemplate, phoneNumber, tenantId);
+        return {
+            message: basicMessage,
+            greeting: 'Hi {name}!',
+            delay: 2000
+        };
     }
 };
 
@@ -413,7 +516,7 @@ const processBroadcastQueue = async () => {
             count: pending.length,
             campaigns: [...new Set(pending.map(m => m.campaign_name))],
             batchLogId,
-            estimatedDuration: Math.round((pending.length * MESSAGE_DELAY) / 1000) + ' seconds',
+            estimatedDuration: Math.round((pending.length * (BASE_MESSAGE_DELAY + MAX_RANDOM_DELAY/2)) / 1000) + ' seconds',
             nextBatchAllowedAt: new Date(Date.now() + BATCH_COOLDOWN).toISOString()
         });
         
@@ -468,12 +571,15 @@ const processBroadcastQueue = async () => {
                     throw new Error('Message text missing from record');
                 }
                 
-                // Personalize message
-                const personalizedMessage = await personalizeMessage(
+                // Humanize and personalize message
+                const humanized = await humanizeMessage(
                     messageText,
                     phoneNumber,
                     message.tenant_id
                 );
+                
+                // Apply random human-like delay (1-4 seconds)
+                await new Promise(resolve => setTimeout(resolve, humanized.delay));
                 
                 // Send message
                 BroadcastLogger.info(`Sending message ${i + 1}/${pending.length}`, {
@@ -481,14 +587,16 @@ const processBroadcastQueue = async () => {
                     messageId: message.id,
                     campaign: message.campaign_name,
                     hasMedia: !!mediaUrl,
-                    personalized: personalizedMessage !== messageText
+                    humanized: true,
+                    greeting: humanized.greeting,
+                    randomDelay: humanized.delay
                 });
                 
                 // Use smart sender with tenant ID
                 const sendResult = await sendMessageSmart(
                     message.tenant_id, 
                     phoneNumber, 
-                    personalizedMessage, 
+                    humanized.message, 
                     mediaUrl
                 );
                 
@@ -579,17 +687,18 @@ const processBroadcastQueue = async () => {
                 });
             }
             
-            // Apply delay between messages (except after the last message)
+            // Apply random human-like delay between messages (except after the last message)
             if (i < pending.length - 1) {
-                BroadcastLogger.debug(`Waiting ${MESSAGE_DELAY/1000} seconds before next message`, {
+                const messageDelay = getHumanDelay();
+                BroadcastLogger.debug(`Waiting ${Math.round(messageDelay/1000)} seconds before next message`, {
                     processId,
                     currentMessage: i + 1,
-                    remainingMessages: pending.length - i - 1
+                    remainingMessages: pending.length - i - 1,
+                    randomDelay: messageDelay
                 });
-                await new Promise(resolve => setTimeout(resolve, MESSAGE_DELAY));
+                await new Promise(resolve => setTimeout(resolve, messageDelay));
             }
-        }
-        
+        }        
         // Step 6: Record batch completion and enforce cooldown
         if (batchLogId) {
             await supabase
