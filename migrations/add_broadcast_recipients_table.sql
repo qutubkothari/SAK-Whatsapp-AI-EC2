@@ -1,7 +1,7 @@
 -- Track per-recipient delivery status for each broadcast campaign
 CREATE TABLE IF NOT EXISTS broadcast_recipients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    campaign_id UUID NOT NULL REFERENCES broadcast_campaigns(id) ON DELETE CASCADE,
+    campaign_id UUID NOT NULL,
     phone VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending', -- sent, failed, pending
     sent_at TIMESTAMP WITH TIME ZONE,
