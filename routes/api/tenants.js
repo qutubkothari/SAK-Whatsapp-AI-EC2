@@ -445,4 +445,49 @@ async function getTenantStats(tenantId) {
     }
 }
 
+/**
+ * POST /api/tenants/update-password
+ * Update password for a tenant (used during registration)
+ */
+router.post('/update-password', async (req, res) => {
+    try {
+        const { tenantId, password } = req.body;
+
+        if (!tenantId || !password) {
+            return res.status(400).json({
+                success: false,
+                error: 'Tenant ID and password are required'
+            });
+        }
+
+        // Update tenant password
+        const { error } = await supabase
+            .from('tenants')
+            .update({ password: password })
+            .eq('id', tenantId);
+
+        if (error) {
+            console.error('[UPDATE_PASSWORD] Error:', error);
+            return res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        }
+
+        console.log('[UPDATE_PASSWORD] Password set for tenant:', tenantId);
+
+        res.json({
+            success: true,
+            message: 'Password updated successfully'
+        });
+
+    } catch (error) {
+        console.error('[UPDATE_PASSWORD] Exception:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
 module.exports = router;
