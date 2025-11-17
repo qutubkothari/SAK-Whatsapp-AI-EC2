@@ -2056,12 +2056,66 @@
         // Check WhatsApp Web connection status
         const waWebStatus = await checkWhatsAppWebStatus();
         
+        // Check daily message limit
+        const tenantId = state.session?.tenantId;
+        let dailyLimitHtml = '';
+        
+        try {
+            const statsResponse = await fetch(`/api/broadcast/daily-stats/${tenantId}`);
+            if (statsResponse.ok) {
+                const statsData = await statsResponse.json();
+                const stats = statsData.stats;
+                
+                let bannerColor = 'bg-green-50 border-green-200 text-green-800';
+                let icon = 'fa-check-circle text-green-500';
+                
+                if (stats.status === 'limit_reached') {
+                    bannerColor = 'bg-red-50 border-red-300 text-red-800';
+                    icon = 'fa-exclamation-triangle text-red-500';
+                } else if (stats.status === 'warning') {
+                    bannerColor = 'bg-yellow-50 border-yellow-300 text-yellow-800';
+                    icon = 'fa-exclamation-circle text-yellow-500';
+                }
+                
+                dailyLimitHtml = `
+                    <div class="${bannerColor} border-2 rounded-lg p-4 mb-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <i class="fas ${icon} text-2xl mr-3"></i>
+                                <div>
+                                    <p class="font-bold">Daily Message Usage</p>
+                                    <p class="text-sm">${stats.sent_today} / ${stats.daily_limit} messages sent today (${stats.percentage_used}%)</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-bold text-lg">${stats.remaining}</p>
+                                <p class="text-xs">remaining</p>
+                            </div>
+                        </div>
+                        ${stats.status === 'warning' || stats.status === 'limit_reached' ? `
+                            <p class="text-xs mt-2">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                ${stats.status === 'limit_reached' ? 
+                                    'Daily limit reached! Limit resets tomorrow.' : 
+                                    'Approaching daily limit. Use wisely to avoid hitting the cap.'}
+                            </p>
+                        ` : ''}
+                    </div>
+                `;
+            }
+        } catch (err) {
+            console.log('Could not load daily stats:', err);
+        }
+        
         document.getElementById('tabContent').innerHTML = `
             <div class="max-w-4xl mx-auto">
                 <!-- WhatsApp Web Connection Status Banner -->
                 <div id="waWebStatusBanner" class="mb-4">
                     ${waWebStatus.html}
                 </div>
+                
+                <!-- Daily Limit Banner -->
+                ${dailyLimitHtml}
                 
                 <div class="config-card p-8 rounded-2xl mb-6">
                     <h2 class="text-gray-900 text-2xl font-bold mb-6">
@@ -2303,9 +2357,21 @@
 
                         <!-- Message Text -->
                         <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-2">
-                                Message <span id="messageLabel">Text</span>
-                            </label>
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    Message <span id="messageLabel">Text</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="loadMessageTemplates()" 
+                                        class="text-xs text-indigo-600 hover:text-indigo-700 font-semibold">
+                                        <i class="fas fa-file-alt"></i> Load Template
+                                    </button>
+                                    <button type="button" onclick="saveAsTemplate()" 
+                                        class="text-xs text-green-600 hover:text-green-700 font-semibold">
+                                        <i class="fas fa-save"></i> Save as Template
+                                    </button>
+                                </div>
+                            </div>
                             <textarea id="broadcastMessage" required rows="4"
                                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 placeholder="Enter your broadcast message here..."></textarea>
@@ -2393,9 +2459,33 @@
 
                 <!-- Recent Broadcasts -->
                 <div class="config-card p-8 rounded-2xl">
-                    <h3 class="text-gray-900 text-xl font-bold mb-4">
-                        <i class="fas fa-history mr-2 text-gray-600"></i>Recent Broadcasts
-                    </h3>
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-gray-900 text-xl font-bold">
+                            <i class="fas fa-history mr-2 text-gray-600"></i>Recent Broadcasts
+                        </h3>
+                    </div>
+                    
+                    <!-- Search and Filter Controls -->
+                    <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input type="text" id="campaignSearch" placeholder="Search by campaign name..."
+                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+                                onkeyup="filterBroadcasts()">
+                            <select id="statusFilter" onchange="filterBroadcasts()"
+                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm">
+                                <option value="">All Statuses</option>
+                                <option value="completed">Completed</option>
+                                <option value="processing">Processing</option>
+                                <option value="pending">Pending</option>
+                                <option value="failed">Failed</option>
+                            </select>
+                            <button type="button" onclick="clearFilters()"
+                                class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-semibold">
+                                <i class="fas fa-times mr-1"></i> Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                    
                     <div id="broadcastHistory" class="text-center py-8 text-gray-500">
                         <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
                         <p>No broadcasts sent yet</p>
@@ -2722,74 +2812,10 @@
             const result = await response.json();
             
             if (result.success && result.broadcasts && result.broadcasts.length > 0) {
-                const historyHtml = result.broadcasts.map(broadcast => {
-                    const sentAt = new Date(broadcast.sent_at || broadcast.created_at).toLocaleString();
-                    const isProcessing = broadcast.status === 'processing';
-                    const successRate = broadcast.recipient_count > 0 
-                        ? ((broadcast.success_count / broadcast.recipient_count) * 100).toFixed(0)
-                        : 0;
-                    
-                    // Show progress bar for processing broadcasts
-                    let progressBar = '';
-                    if (isProcessing && broadcast.recipient_count > 0) {
-                        const progress = ((broadcast.success_count + broadcast.fail_count) / broadcast.recipient_count * 100).toFixed(0);
-                        progressBar = `
-                            <div class="mt-3 mb-2">
-                                <div class="flex justify-between text-xs text-gray-600 mb-1">
-                                    <span>Processing...</span>
-                                    <span>${broadcast.success_count + broadcast.fail_count}/${broadcast.recipient_count}</span>
-                                </div>
-                                <div class="w-full bg-gray-200 rounded-full h-2">
-                                    <div class="bg-blue-500 h-2 rounded-full transition-all duration-300 animate-pulse" style="width: ${progress}%"></div>
-                                </div>
-                            </div>
-                        `;
-                    }
-                    
-                    return `
-                        <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition mb-3">
-                            <div class="flex justify-between items-start mb-2">
-                                <div>
-                                    <h4 class="font-semibold text-gray-900">${escapeHtml(broadcast.campaign_name)}</h4>
-                                    <p class="text-xs text-gray-500 mt-1">${sentAt}</p>
-                                </div>
-                                <span class="px-3 py-1 rounded-full text-xs font-medium ${
-                                    broadcast.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                    broadcast.status === 'processing' ? 'bg-blue-100 text-blue-800 animate-pulse' :
-                                    broadcast.status === 'scheduled' ? 'bg-purple-100 text-purple-800' :
-                                    'bg-gray-100 text-gray-800'
-                                }">
-                                    ${isProcessing ? '⏳ Processing' : broadcast.status}
-                                </span>
-                            </div>
-                            <p class="text-sm text-gray-600 mb-3 line-clamp-2">${escapeHtml(broadcast.message_content)}</p>
-                            ${progressBar}
-                            <div class="flex gap-4 text-sm">
-                                <div class="flex items-center text-gray-600">
-                                    <i class="fas fa-paper-plane mr-1 text-xs"></i>
-                                    <span>${broadcast.success_count || 0} sent</span>
-                                </div>
-                                <div class="flex items-center text-gray-600">
-                                    <i class="fas fa-users mr-1 text-xs"></i>
-                                    <span>${broadcast.recipient_count || 0} total</span>
-                                </div>
-                                ${!isProcessing ? `
-                                <div class="flex items-center ${
-                                    successRate >= 90 ? 'text-green-600' :
-                                    successRate >= 70 ? 'text-yellow-600' :
-                                    'text-red-600'
-                                }">
-                                    <i class="fas fa-chart-pie mr-1 text-xs"></i>
-                                    <span>${successRate}% success</span>
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-                
-                document.getElementById('broadcastHistory').innerHTML = historyHtml;
+                window.allBroadcasts = result.broadcasts; // Store for filtering
+                renderBroadcastList(result.broadcasts);
             } else {
+                window.allBroadcasts = [];
                 document.getElementById('broadcastHistory').innerHTML = `
                     <div class="text-center py-8 text-gray-500">
                         <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
@@ -2799,12 +2825,360 @@
             }
         } catch (err) {
             console.error('Error loading broadcast history:', err);
+            window.allBroadcasts = [];
             document.getElementById('broadcastHistory').innerHTML = `
                 <div class="text-center py-8 text-red-500">
                     <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
                     <p>Failed to load broadcast history</p>
                 </div>
             `;
+        }
+    }
+
+    // NEW PHASE 2 FEATURES
+
+    // Filter broadcasts
+    window.allBroadcasts = []; // Store all broadcasts for filtering
+    
+    async function filterBroadcasts() {
+        const searchTerm = document.getElementById('campaignSearch')?.value.toLowerCase() || '';
+        const statusFilter = document.getElementById('statusFilter')?.value || '';
+        
+        let filtered = window.allBroadcasts;
+        
+        if (searchTerm) {
+            filtered = filtered.filter(b => 
+                b.campaign_name.toLowerCase().includes(searchTerm)
+            );
+        }
+        
+        if (statusFilter) {
+            filtered = filtered.filter(b => b.status === statusFilter);
+        }
+        
+        // Render filtered results (reuse the rendering logic from loadBroadcastHistory)
+        if (filtered.length === 0) {
+            document.getElementById('broadcastHistory').innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-search text-4xl mb-3 opacity-50"></i>
+                    <p>No broadcasts match your filters</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Reuse rendering logic from loadBroadcastHistory
+        renderBroadcastList(filtered);
+    }
+    
+    function clearFilters() {
+        document.getElementById('campaignSearch').value = '';
+        document.getElementById('statusFilter').value = '';
+        renderBroadcastList(window.allBroadcasts);
+    }
+    
+    function renderBroadcastList(broadcasts) {
+        const historyHtml = broadcasts.map(broadcast => {
+            const sentAt = new Date(broadcast.sent_at || broadcast.created_at).toLocaleString();
+            const isProcessing = broadcast.status === 'processing';
+            const successRate = broadcast.recipient_count > 0 
+                ? ((broadcast.success_count / broadcast.recipient_count) * 100).toFixed(0)
+                : 0;
+            
+            let progressBar = '';
+            if (isProcessing && broadcast.recipient_count > 0) {
+                const progress = ((broadcast.success_count + broadcast.fail_count) / broadcast.recipient_count * 100).toFixed(0);
+                progressBar = `
+                    <div class="mt-3 mb-2">
+                        <div class="flex justify-between text-xs text-gray-600 mb-1">
+                            <span>Processing...</span>
+                            <span>${broadcast.success_count + broadcast.fail_count}/${broadcast.recipient_count}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-blue-500 h-2 rounded-full transition-all duration-300 animate-pulse" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition mb-3">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h4 class="font-semibold text-gray-900">${escapeHtml(broadcast.campaign_name)}</h4>
+                            <p class="text-xs text-gray-500 mt-1">${sentAt}</p>
+                        </div>
+                        <span class="px-3 py-1 rounded-full text-xs font-medium ${
+                            broadcast.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            broadcast.status === 'processing' ? 'bg-blue-100 text-blue-800 animate-pulse' :
+                            broadcast.status === 'scheduled' ? 'bg-purple-100 text-purple-800' :
+                            'bg-gray-100 text-gray-800'
+                        }">
+                            ${isProcessing ? '⏳ Processing' : broadcast.status}
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-3 line-clamp-2">${escapeHtml(broadcast.message_content)}</p>
+                    ${progressBar}
+                    <div class="flex gap-4 text-sm">
+                        <div class="flex items-center text-gray-600">
+                            <i class="fas fa-paper-plane mr-1 text-xs"></i>
+                            <span>${broadcast.success_count || 0} sent</span>
+                        </div>
+                        <div class="flex items-center text-gray-600">
+                            <i class="fas fa-users mr-1 text-xs"></i>
+                            <span>${broadcast.recipient_count || 0} total</span>
+                        </div>
+                        ${!isProcessing ? `
+                        <div class="flex items-center ${
+                            successRate >= 90 ? 'text-green-600' :
+                            successRate >= 70 ? 'text-yellow-600' :
+                            'text-red-600'
+                        }">
+                            <i class="fas fa-chart-pie mr-1 text-xs"></i>
+                            <span>${successRate}% success</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                    ${broadcast.campaign_id ? `
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="viewCampaignReport('${broadcast.campaign_id}')" 
+                            class="flex-1 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-xs font-semibold">
+                            <i class="fas fa-chart-bar mr-1"></i> View Details
+                        </button>
+                        <button onclick="exportCampaignReport('${broadcast.campaign_id}', '${escapeHtml(broadcast.campaign_name)}')" 
+                            class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs font-semibold">
+                            <i class="fas fa-download mr-1"></i> Export CSV
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+        
+        document.getElementById('broadcastHistory').innerHTML = historyHtml;
+    }
+    
+    // View campaign report (per-contact delivery details)
+    async function viewCampaignReport(campaignId) {
+        try {
+            const response = await fetch(`/api/broadcast/campaign-report/${campaignId}`);
+            const result = await response.json();
+            
+            if (!result.success) {
+                showNotification('Failed to load campaign report', 'error');
+                return;
+            }
+            
+            const { campaign, recipients, stats } = result;
+            
+            // Create modal
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+            
+            modal.innerHTML = `
+                <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                    <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h2 class="text-2xl font-bold mb-2">${escapeHtml(campaign.name)}</h2>
+                                <p class="text-sm opacity-90">Campaign Delivery Report</p>
+                            </div>
+                            <button onclick="this.closest('.fixed').remove()" class="text-white hover:bg-white/20 rounded-lg p-2">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-4 gap-4 mt-4">
+                            <div class="bg-white/10 rounded-lg p-3 text-center">
+                                <p class="text-2xl font-bold">${stats.total}</p>
+                                <p class="text-xs opacity-90">Total</p>
+                            </div>
+                            <div class="bg-green-500/30 rounded-lg p-3 text-center">
+                                <p class="text-2xl font-bold">${stats.sent}</p>
+                                <p class="text-xs opacity-90">Sent</p>
+                            </div>
+                            <div class="bg-red-500/30 rounded-lg p-3 text-center">
+                                <p class="text-2xl font-bold">${stats.failed}</p>
+                                <p class="text-xs opacity-90">Failed</p>
+                            </div>
+                            <div class="bg-yellow-500/30 rounded-lg p-3 text-center">
+                                <p class="text-2xl font-bold">${stats.pending}</p>
+                                <p class="text-xs opacity-90">Pending</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-6 overflow-y-auto" style="max-height: calc(90vh - 250px);">
+                        <table class="w-full">
+                            <thead class="bg-gray-100 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Phone Number</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Status</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Sent At</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Error</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${recipients.map(r => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-sm font-mono">${r.phone}</td>
+                                        <td class="px-4 py-3">
+                                            <span class="px-2 py-1 rounded-full text-xs font-semibold ${
+                                                r.status === 'sent' ? 'bg-green-100 text-green-800' :
+                                                r.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                                'bg-yellow-100 text-yellow-800'
+                                            }">
+                                                ${r.status}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-xs text-gray-600">
+                                            ${r.sent_at ? new Date(r.sent_at).toLocaleString() : '-'}
+                                        </td>
+                                        <td class="px-4 py-3 text-xs text-red-600">
+                                            ${r.error_message || '-'}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } catch (err) {
+            console.error('Error viewing campaign report:', err);
+            showNotification('Failed to load report', 'error');
+        }
+    }
+    
+    // Export campaign report as CSV
+    function exportCampaignReport(campaignId, campaignName) {
+        const url = `/api/broadcast/campaign-report/${campaignId}/export`;
+        window.location.href = url;
+        showNotification('Downloading report...', 'success');
+    }
+    
+    // Load message templates
+    async function loadMessageTemplates() {
+        const tenantId = state.session?.tenantId;
+        if (!tenantId) return;
+        
+        try {
+            const response = await fetch(`/api/broadcast/templates/${tenantId}`);
+            const result = await response.json();
+            
+            if (!result.success || !result.templates || result.templates.length === 0) {
+                showNotification('No templates saved yet', 'info');
+                return;
+            }
+            
+            // Show template selector modal
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+            
+            modal.innerHTML = `
+                <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+                    <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-2xl font-bold">Load Message Template</h2>
+                            <button onclick="this.closest('.fixed').remove()" class="text-white hover:bg-white/20 rounded-lg p-2">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-6 overflow-y-auto" style="max-height: calc(80vh - 100px);">
+                        <div class="space-y-3">
+                            ${result.templates.map(template => `
+                                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition"
+                                     onclick="useTemplate('${template.id}', ${JSON.stringify(escapeHtml(template.message_text)).replace(/'/g, "\\'")} , '${template.image_url || ''}', '${template.message_type}')">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <h3 class="font-semibold text-gray-900">${escapeHtml(template.template_name)}</h3>
+                                        <span class="text-xs text-gray-500">Used ${template.usage_count || 0}x</span>
+                                    </div>
+                                    <p class="text-sm text-gray-600 line-clamp-3">${escapeHtml(template.message_text)}</p>
+                                    ${template.image_url ? `
+                                        <div class="mt-2">
+                                            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                                <i class="fas fa-image mr-1"></i> Has Image
+                                            </span>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } catch (err) {
+            console.error('Error loading templates:', err);
+            showNotification('Failed to load templates', 'error');
+        }
+    }
+    
+    // Use template
+    async function useTemplate(templateId, messageText, imageUrl, messageType) {
+        document.getElementById('broadcastMessage').value = messageText;
+        
+        if (messageType === 'image' && imageUrl) {
+            document.querySelector('input[name="messageType"][value="image"]').checked = true;
+            toggleMessageType();
+            // Note: Can't set base64 image from URL easily, user will need to re-upload
+        }
+        
+        // Increment usage count
+        await fetch(`/api/broadcast/templates/${templateId}/use`, { method: 'PUT' });
+        
+        // Close modal
+        document.querySelector('.fixed.inset-0').remove();
+        showNotification('Template loaded!', 'success');
+    }
+    
+    // Save as template
+    async function saveAsTemplate() {
+        const tenantId = state.session?.tenantId;
+        if (!tenantId) return;
+        
+        const messageText = document.getElementById('broadcastMessage').value.trim();
+        if (!messageText) {
+            showNotification('Please enter a message first', 'error');
+            return;
+        }
+        
+        const templateName = prompt('Enter a name for this template:');
+        if (!templateName) return;
+        
+        const messageType = document.querySelector('input[name="messageType"]:checked').value;
+        
+        try {
+            const response = await fetch('/api/broadcast/templates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenantId,
+                    templateName,
+                    messageText,
+                    messageType,
+                    imageUrl: uploadedImageBase64
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification('Template saved successfully!', 'success');
+            } else {
+                showNotification(result.error || 'Failed to save template', 'error');
+            }
+        } catch (err) {
+            console.error('Error saving template:', err);
+            showNotification('Failed to save template', 'error');
         }
     }
 
