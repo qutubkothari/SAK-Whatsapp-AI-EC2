@@ -55,7 +55,7 @@
             </button>
             <button 
                 id="registerTabBtn"
-                class="flex-1 py-3 rounded-xl font-semibold transition-all text-white hover:bg-white/10"
+                class="flex-1 py-3 rounded-xl font-semibold transition-all text-gray-700 hover:bg-white/20 bg-white/50"
                 onclick="switchTab('register')"
             >
                 <i class="fas fa-user-plus mr-2"></i>Register
@@ -280,16 +280,16 @@
                 loginTab.classList.remove('hidden');
                 registerTab.classList.add('hidden');
                 loginTabBtn.classList.add('bg-white', 'text-purple-700', 'shadow-md');
-                loginTabBtn.classList.remove('text-white', 'hover:bg-white/10');
+                loginTabBtn.classList.remove('text-gray-700', 'hover:bg-white/20', 'bg-white/50');
                 registerTabBtn.classList.remove('bg-white', 'text-purple-700', 'shadow-md');
-                registerTabBtn.classList.add('text-white', 'hover:bg-white/10');
+                registerTabBtn.classList.add('text-gray-700', 'hover:bg-white/20', 'bg-white/50');
             } else {
                 loginTab.classList.add('hidden');
                 registerTab.classList.remove('hidden');
                 registerTabBtn.classList.add('bg-white', 'text-purple-700', 'shadow-md');
-                registerTabBtn.classList.remove('text-white', 'hover:bg-white/10');
+                registerTabBtn.classList.remove('text-gray-700', 'hover:bg-white/20', 'bg-white/50');
                 loginTabBtn.classList.remove('bg-white', 'text-purple-700', 'shadow-md');
-                loginTabBtn.classList.add('text-white', 'hover:bg-white/10');
+                loginTabBtn.classList.add('text-gray-700', 'hover:bg-white/20', 'bg-white/50');
             }
         }
 
