@@ -2981,14 +2981,6 @@
         document.getElementById('pasteRecipientsList').classList.add('hidden');
         showNotification('Cleared all contacts', 'info');
     }
-        } else {
-            uploadBtn.className = 'flex-1 px-4 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-50';
-            groupsBtn.className = 'flex-1 px-4 py-2 rounded-lg border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold';
-            uploadMode.classList.add('hidden');
-            groupsMode.classList.remove('hidden');
-            loadContactGroups();
-        }
-    }
 
     async function loadContactGroups() {
         const tenantId = state.session?.tenantId;
