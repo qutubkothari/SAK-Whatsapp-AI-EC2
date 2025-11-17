@@ -2092,12 +2092,13 @@
         // Check daily message limit
         const tenantId = state.session?.tenantId;
         let dailyLimitHtml = '';
+        let stats = null; // Initialize stats variable
         
         try {
             const statsResponse = await fetch(`/api/broadcast/daily-stats/${tenantId}`);
             if (statsResponse.ok) {
                 const statsData = await statsResponse.json();
-                const stats = statsData.stats;
+                stats = statsData.stats; // Assign to outer scope variable
                 
                 let bannerColor = 'bg-green-50 border-green-200 text-green-800';
                 let icon = 'fa-check-circle text-green-500';
