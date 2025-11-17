@@ -760,7 +760,7 @@ const scheduleMultiDayBroadcast = async (tenantId, campaignName, message, startA
             };
             
             const { error: campaignError } = await supabase
-                .from('broadcast_queue')
+                .from('bulk_schedules')
                 .insert(campaignData);
             
             if (campaignError) {
