@@ -126,51 +126,56 @@
                 </div>
                 
                 <nav class="py-4">
-                    <div class="sidebar-item active" onclick="switchTab('overview')" data-tab="overview">
+                    <!-- Hidden tabs - will be activated based on subscription modules -->
+                    <div class="sidebar-item active" onclick="switchTab('overview')" data-tab="overview" style="display: none;">
                         <i class="fas fa-chart-line"></i>
                         <span>Overview</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('conversations')" data-tab="conversations">
+                    <div class="sidebar-item" onclick="switchTab('conversations')" data-tab="conversations" style="display: none;">
                         <i class="fas fa-comments"></i>
                         <span>Conversations</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('orders')" data-tab="orders">
+                    <div class="sidebar-item" onclick="switchTab('orders')" data-tab="orders" style="display: none;">
                         <i class="fas fa-shopping-cart"></i>
                         <span>Orders</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('followups')" data-tab="followups">
+                    <div class="sidebar-item" onclick="switchTab('followups')" data-tab="followups" style="display: none;">
                         <i class="fas fa-clock"></i>
                         <span>Follow-ups</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('products')" data-tab="products">
+                    <div class="sidebar-item" onclick="switchTab('products')" data-tab="products" style="display: none;">
                         <i class="fas fa-box"></i>
                         <span>Products</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('customers')" data-tab="customers">
+                    <div class="sidebar-item" onclick="switchTab('customers')" data-tab="customers" style="display: none;">
                         <i class="fas fa-users"></i>
                         <span>Customers</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('settings')" data-tab="settings">
+                    <div class="sidebar-item" onclick="switchTab('settings')" data-tab="settings" style="display: none;">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('analytics')" data-tab="analytics">
+                    <div class="sidebar-item" onclick="switchTab('analytics')" data-tab="analytics" style="display: none;">
                         <i class="fas fa-chart-bar"></i>
                         <span>Analytics</span>
                     </div>
+                    
+                    <!-- Active tabs - Based on subscription modules -->
                     <div class="sidebar-item" onclick="switchTab('broadcast')" data-tab="broadcast">
                         <i class="fas fa-bullhorn"></i>
                         <span>Broadcast</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('whatsapp-web')" data-tab="whatsapp-web">
+                    <div class="sidebar-item active" onclick="switchTab('whatsapp-web')" data-tab="whatsapp-web">
                         <i class="fas fa-qrcode"></i>
                         <span>WhatsApp Web</span>
                     </div>
-                    <div class="sidebar-item" onclick="window.location.href='/discounts.html'">
+                    
+                    <!-- Hidden tabs -->
+                    <div class="sidebar-item" onclick="window.location.href='/discounts.html'" style="display: none;">
                         <i class="fas fa-tags"></i>
                         <span>Discounts</span>
                     </div>
-                    <div class="sidebar-item" onclick="switchTab('website')" data-tab="website">
+                    <div class="sidebar-item" onclick="switchTab('website')" data-tab="website" style="display: none;">
                         <i class="fas fa-globe"></i>
                         <span>Website Content</span>
                     </div>
@@ -4214,7 +4219,7 @@
                 document.getElementById('loadingScreen').classList.add('hidden');
                 document.getElementById('dashboard').classList.remove('hidden');
                 await loadStats();
-                switchTab('overview');
+                switchTab('whatsapp-web');
                 loadNotifications();
                 showNotification('Welcome back, ' + state.session.businessName + '!', 'success');
                 return;
