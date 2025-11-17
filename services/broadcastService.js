@@ -577,7 +577,179 @@ const processBroadcastQueue = async () => {
 };
 
 /**
- * Enhanced broadcast scheduling (same as before)
+ * Schedule multi-day broadcast campaign
+ */
+const scheduleMultiDayBroadcast = async (tenantId, campaignName, message, startAt, phoneNumbers, imageUrl, dailyLimit, currentCount) => {
+    const operationId = crypto.randomUUID().slice(0, 8);
+    const parentCampaignId = crypto.randomUUID();
+    
+    BroadcastLogger.info('Scheduling multi-day broadcast', {
+        operationId,
+        tenantId,
+        totalRecipients: phoneNumbers.length,
+        dailyLimit,
+        currentCount
+    });
+    
+    try {
+        // Validate and normalize phone numbers
+        const validatedNumbers = phoneNumbers
+            .map(normalizePhoneNumber)
+            .filter(phone => phone !== null);
+        
+        if (validatedNumbers.length === 0) {
+            return 'No valid phone numbers found. Please check the format and try again.';
+        }
+        
+        // Filter out unsubscribed users
+        const validRecipients = [];
+        for (const phone of validatedNumbers) {
+            if (!(await isUnsubscribed(phone))) {
+                validRecipients.push(phone);
+            }
+        }
+        
+        if (validRecipients.length === 0) {
+            return 'All recipients have unsubscribed or have invalid phone numbers. No messages were scheduled.';
+        }
+        
+        // Calculate how many days needed
+        const remainingToday = Math.max(0, dailyLimit - currentCount);
+        const recipientsAfterToday = validRecipients.length - remainingToday;
+        const additionalDays = Math.ceil(recipientsAfterToday / dailyLimit);
+        const totalDays = (remainingToday > 0 ? 1 : 0) + additionalDays;
+        
+        BroadcastLogger.info('Multi-day schedule calculated', {
+            operationId,
+            totalRecipients: validRecipients.length,
+            remainingToday,
+            totalDays,
+            dailyLimit
+        });
+        
+        // Split recipients into daily batches
+        const dailyBatches = [];
+        let offset = 0;
+        
+        // Day 1 - use remaining capacity
+        if (remainingToday > 0) {
+            dailyBatches.push({
+                recipients: validRecipients.slice(0, remainingToday),
+                sendAt: new Date(startAt),
+                dayNumber: 1
+            });
+            offset = remainingToday;
+        }
+        
+        // Subsequent days - full daily limit
+        let dayNumber = remainingToday > 0 ? 2 : 1;
+        while (offset < validRecipients.length) {
+            const batch = validRecipients.slice(offset, offset + dailyLimit);
+            const sendDate = new Date(startAt);
+            sendDate.setDate(sendDate.getDate() + (remainingToday > 0 ? dayNumber - 1 : dayNumber));
+            sendDate.setHours(9, 0, 0, 0); // 9 AM each day
+            
+            dailyBatches.push({
+                recipients: batch,
+                sendAt: sendDate,
+                dayNumber
+            });
+            
+            offset += dailyLimit;
+            dayNumber++;
+        }
+        
+        // Insert all daily campaigns
+        const INSERT_BATCH_SIZE = 500;
+        const campaignIds = [];
+        
+        for (let i = 0; i < dailyBatches.length; i++) {
+            const batch = dailyBatches[i];
+            const campaignId = crypto.randomUUID();
+            campaignIds.push(campaignId);
+            
+            const dayLabel = batch.dayNumber === 1 ? '' : ` (Day ${batch.dayNumber}/${totalDays})`;
+            const campaignData = {
+                id: campaignId,
+                tenant_id: tenantId,
+                campaign_name: `${campaignName}${dayLabel}`,
+                message_text: message,
+                message_type: imageUrl ? 'image' : 'text',
+                image_url: imageUrl,
+                recipient_count: batch.recipients.length,
+                scheduled_at: batch.sendAt.toISOString(),
+                status: 'scheduled',
+                parent_campaign_id: parentCampaignId,
+                day_number: batch.dayNumber,
+                total_days: totalDays,
+                auto_scheduled: true
+            };
+            
+            const { error: campaignError } = await supabase
+                .from('broadcast_queue')
+                .insert(campaignData);
+            
+            if (campaignError) {
+                BroadcastLogger.error('Failed to create daily campaign', campaignError, {
+                    operationId,
+                    dayNumber: batch.dayNumber
+                });
+                throw new Error(`Failed to schedule day ${batch.dayNumber}: ${campaignError.message}`);
+            }
+            
+            // Insert recipients for this day
+            const recipients = batch.recipients.map(phone => ({
+                campaign_id: campaignId,
+                phone: phone,
+                status: 'pending'
+            }));
+            
+            for (let j = 0; j < recipients.length; j += INSERT_BATCH_SIZE) {
+                const recipientBatch = recipients.slice(j, j + INSERT_BATCH_SIZE);
+                const { error: recipientError } = await supabase
+                    .from('broadcast_recipients')
+                    .insert(recipientBatch);
+                
+                if (recipientError) {
+                    BroadcastLogger.warn('Failed to insert recipient tracking', recipientError, {
+                        operationId,
+                        dayNumber: batch.dayNumber
+                    });
+                }
+            }
+            
+            BroadcastLogger.info('Daily campaign scheduled', {
+                operationId,
+                campaignId: campaignId.slice(0, 8),
+                dayNumber: batch.dayNumber,
+                recipients: batch.recipients.length,
+                scheduledFor: batch.sendAt.toISOString()
+            });
+        }
+        
+        // Generate summary message
+        const schedule = dailyBatches.map((batch, index) => {
+            const date = batch.sendAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const time = batch.sendAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            return `  📅 Day ${batch.dayNumber}: ${batch.recipients.length} contacts on ${date} at ${time}`;
+        }).join('\n');
+        
+        return `✅ Multi-Day Broadcast Scheduled Successfully!\n\n` +
+               `📊 Campaign: ${campaignName}\n` +
+               `👥 Total Recipients: ${validRecipients.length}\n` +
+               `📈 Daily Limit: ${dailyLimit} messages/day\n` +
+               `📆 Schedule: ${totalDays} days\n\n` +
+               `${schedule}\n\n` +
+               `ℹ️ The system will automatically send each batch on its scheduled day. You don't need to do anything else!`;
+        
+    } catch (error) {
+        BroadcastLogger.error('Multi-day scheduling failed', error, { operationId });
+        throw error;
+    }
+};
+
+/**
+ * Enhanced broadcast scheduling with multi-day support
  */
 const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneNumbers, imageUrl = null) => {
     const startTime = Date.now();
@@ -606,32 +778,68 @@ const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneN
             return 'Cannot schedule broadcast to more than 10,000 contacts at once. Please split into smaller batches.';
         }
         
-        // Check daily limit for this tenant
-        const dailyLimit = 1000; // Safe daily limit to prevent WhatsApp bans
+        // Get tenant's daily limit
+        const { data: tenantData, error: tenantError } = await supabase
+            .from('tenants')
+            .select('daily_message_limit')
+            .eq('id', tenantId)
+            .single();
+        
+        if (tenantError) {
+            BroadcastLogger.error('Failed to fetch tenant limit', tenantError, { tenantId });
+            throw new Error('Failed to fetch tenant settings');
+        }
+        
+        const dailyLimit = tenantData?.daily_message_limit || 1000;
+        
+        // Check today's usage
         const { data: todayStats, error: statsError } = await supabase
             .rpc('get_daily_message_count', { p_tenant_id: tenantId });
         
         const currentCount = todayStats || 0;
-        const newTotal = currentCount + phoneNumbers.length;
+        const remainingToday = dailyLimit - currentCount;
         
-        if (newTotal > dailyLimit) {
-            const remaining = dailyLimit - currentCount;
-            if (remaining <= 0) {
-                return `Daily limit reached! You've sent ${currentCount} messages today. WhatsApp allows up to ${dailyLimit} messages per day. Please try again tomorrow.`;
-            } else {
-                return `Daily limit warning! You can only send ${remaining} more messages today (current: ${currentCount}, limit: ${dailyLimit}). Please reduce recipient count or try again tomorrow.`;
-            }
+        // Multi-day scheduling logic
+        if (phoneNumbers.length > remainingToday && remainingToday > 0) {
+            // Split into multiple days
+            return await scheduleMultiDayBroadcast(
+                tenantId, 
+                campaignName, 
+                message, 
+                sendAt, 
+                phoneNumbers, 
+                imageUrl, 
+                dailyLimit, 
+                currentCount
+            );
+        } else if (remainingToday <= 0) {
+            // No capacity today - schedule for tomorrow
+            const tomorrow = new Date(sendAt);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(9, 0, 0, 0); // 9 AM tomorrow
+            
+            return await scheduleMultiDayBroadcast(
+                tenantId,
+                campaignName,
+                message,
+                tomorrow.toISOString(),
+                phoneNumbers,
+                imageUrl,
+                dailyLimit,
+                0 // Start fresh tomorrow
+            );
         }
         
+        // Can send today within limit
         // Warn if approaching limit
-        if (newTotal > dailyLimit * 0.8) {
+        if ((currentCount + phoneNumbers.length) > dailyLimit * 0.8) {
             BroadcastLogger.warn('Approaching daily limit', {
                 operationId,
                 tenantId,
                 currentCount,
-                newTotal,
+                newTotal: currentCount + phoneNumbers.length,
                 limit: dailyLimit,
-                percentUsed: Math.round((newTotal / dailyLimit) * 100)
+                percentUsed: Math.round(((currentCount + phoneNumbers.length) / dailyLimit) * 100)
             });
         }
         

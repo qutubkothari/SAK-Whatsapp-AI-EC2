@@ -625,7 +625,15 @@ router.put('/templates/:templateId/use', async (req, res) => {
 router.get('/daily-stats/:tenantId', async (req, res) => {
     try {
         const { tenantId } = req.params;
-        const dailyLimit = 1000; // Safe daily limit
+        
+        // Get tenant's configured daily limit
+        const { data: tenant, error: tenantError } = await supabase
+            .from('tenants')
+            .select('daily_message_limit')
+            .eq('id', tenantId)
+            .single();
+        
+        const dailyLimit = tenant?.daily_message_limit || 1000;
 
         const { data: count, error } = await supabase
             .rpc('get_daily_message_count', { p_tenant_id: tenantId });
@@ -678,4 +686,65 @@ router.get('/daily-stats/:tenantId', async (req, res) => {
     }
 });
 
+// Update tenant daily message limit
+router.put('/daily-limit/:tenantId', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+        const { dailyLimit } = req.body;
+        
+        if (!dailyLimit || dailyLimit < 100 || dailyLimit > 10000) {
+            return res.status(400).json({
+                success: false,
+                error: 'Daily limit must be between 100 and 10,000'
+            });
+        }
+        
+        const { error } = await supabase
+            .from('tenants')
+            .update({ daily_message_limit: dailyLimit })
+            .eq('id', tenantId);
+        
+        if (error) throw error;
+        
+        res.json({
+            success: true,
+            message: `Daily limit updated to ${dailyLimit} messages`,
+            dailyLimit
+        });
+    } catch (error) {
+        console.error('[BROADCAST_API] Error updating daily limit:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to update daily limit'
+        });
+    }
+});
+
+// Get tenant daily limit
+router.get('/daily-limit/:tenantId', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+        
+        const { data: tenant, error } = await supabase
+            .from('tenants')
+            .select('daily_message_limit')
+            .eq('id', tenantId)
+            .single();
+        
+        if (error) throw error;
+        
+        res.json({
+            success: true,
+            dailyLimit: tenant?.daily_message_limit || 1000
+        });
+    } catch (error) {
+        console.error('[BROADCAST_API] Error fetching daily limit:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch daily limit'
+        });
+    }
+});
+
 module.exports = router;
+
