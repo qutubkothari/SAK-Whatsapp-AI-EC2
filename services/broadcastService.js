@@ -424,7 +424,7 @@ const processBroadcastQueue = async () => {
                     method: sendResult.method
                 });
                 
-                // Mark as sent
+                // Mark as sent in bulk_schedules
                 await supabase
                     .from('bulk_schedules')
                     .update({ 
@@ -434,6 +434,21 @@ const processBroadcastQueue = async () => {
                         delivery_status: 'delivered'
                     })
                     .eq('id', message.id);
+                
+                // Update recipient status in broadcast_recipients
+                await supabase
+                    .from('broadcast_recipients')
+                    .update({
+                        status: 'sent',
+                        sent_at: new Date().toISOString()
+                    })
+                    .eq('campaign_id', message.campaign_id)
+                    .eq('phone', phoneNumber);
+                
+                // Increment daily message count
+                await supabase.rpc('increment_daily_message_count', { 
+                    p_tenant_id: message.tenant_id 
+                });
                 
                 succeeded++;
                 
@@ -459,6 +474,16 @@ const processBroadcastQueue = async () => {
                 if (newRetryCount >= MAX_RETRIES) {
                     updateData.status = 'failed';
                     updateData.delivery_status = 'failed';
+                    
+                    // Mark recipient as failed in broadcast_recipients
+                    await supabase
+                        .from('broadcast_recipients')
+                        .update({
+                            status: 'failed',
+                            error_message: error.message
+                        })
+                        .eq('campaign_id', message.campaign_id)
+                        .eq('phone', message.to_phone_number);
                 } else {
                     updateData.status = 'pending';
                     // Schedule retry after next batch cooldown
@@ -581,6 +606,37 @@ const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneN
             return 'Cannot schedule broadcast to more than 10,000 contacts at once. Please split into smaller batches.';
         }
         
+        // Check daily limit for this tenant
+        const dailyLimit = 1000; // Safe daily limit to prevent WhatsApp bans
+        const { data: todayStats, error: statsError } = await supabase
+            .rpc('get_daily_message_count', { p_tenant_id: tenantId });
+        
+        const currentCount = todayStats || 0;
+        const newTotal = currentCount + phoneNumbers.length;
+        
+        if (newTotal > dailyLimit) {
+            const remaining = dailyLimit - currentCount;
+            if (remaining <= 0) {
+                return `Daily limit reached! You've sent ${currentCount} messages today. WhatsApp allows up to ${dailyLimit} messages per day. Please try again tomorrow.`;
+            } else {
+                return `Daily limit warning! You can only send ${remaining} more messages today (current: ${currentCount}, limit: ${dailyLimit}). Please reduce recipient count or try again tomorrow.`;
+            }
+        }
+        
+        // Warn if approaching limit
+        if (newTotal > dailyLimit * 0.8) {
+            BroadcastLogger.warn('Approaching daily limit', {
+                operationId,
+                tenantId,
+                currentCount,
+                newTotal,
+                limit: dailyLimit,
+                percentUsed: Math.round((newTotal / dailyLimit) * 100)
+            });
+        }
+            return 'Cannot schedule broadcast to more than 10,000 contacts at once. Please split into smaller batches.';
+        }
+        
         // Validate and normalize phone numbers
         const validatedNumbers = phoneNumbers
             .map(normalizePhoneNumber)
@@ -646,6 +702,30 @@ const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneN
                     batchSize: batch.length
                 });
                 throw new Error(`Database insertion failed: ${error.message}`);
+            }
+            
+            insertedCount += batch.length;
+        }
+        
+        // Insert recipients into broadcast_recipients table for per-contact tracking
+        const recipients = validRecipients.map(phone => ({
+            campaign_id: campaignId,
+            phone: phone,
+            status: 'pending'
+        }));
+        
+        for (let i = 0; i < recipients.length; i += INSERT_BATCH_SIZE) {
+            const batch = recipients.slice(i, i + INSERT_BATCH_SIZE);
+            const { error: recipientError } = await supabase
+                .from('broadcast_recipients')
+                .insert(batch);
+            
+            if (recipientError) {
+                BroadcastLogger.warn('Failed to insert recipient tracking', recipientError, {
+                    operationId,
+                    batchStart: i
+                });
+                // Don't fail the whole operation if recipient tracking fails
             }
             
             insertedCount += batch.length;
