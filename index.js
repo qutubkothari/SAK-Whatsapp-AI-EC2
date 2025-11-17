@@ -187,6 +187,10 @@ app.use('/api/zoho', zohoRoutes);
 app.use('/api/customers', customerRouter);
 app.use('/api/dashboard', websiteContentRouter);
 
+// Authentication API
+const authRouter = require('./routes/api/auth');
+app.use('/api/auth', authRouter);
+
 // Tenant Management API
 const tenantsRouter = require('./routes/api/tenants');
 app.use('/api/tenants', tenantsRouter);

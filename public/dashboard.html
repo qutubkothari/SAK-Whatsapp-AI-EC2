@@ -4202,7 +4202,7 @@
         localStorage.removeItem('dashboardSession');
         showNotification('Logged out successfully', 'success');
         setTimeout(() => {
-            location.href = '/';
+            location.href = '/login.html';
         }, 500);
     }
 
@@ -4213,46 +4213,10 @@
             try {
                 state.session = JSON.parse(existingSession);
                 console.log('Restored session from localStorage:', state.session);
-                document.getElementById('loadingScreen').classList.add('hidden');
-                document.getElementById('dashboard').classList.remove('hidden');
-                await loadStats();
-                switchTab('overview');
-                loadNotifications();
-                showNotification('Welcome back!', 'success');
-                return;
-            } catch (err) {
-                console.log('Failed to restore session, will re-authenticate:', err);
-                localStorage.removeItem('dashboardSession');
-            }
-        }
-
-        // No existing session, check for token
-        const urlToken = new URLSearchParams(window.location.search).get('token');
-        const token = urlToken || localStorage.getItem('dashboardToken');
-        
-        if (!token) {
-            document.getElementById('loadingScreen').innerHTML = `
-                <div class="text-center glass-effect p-8 rounded-2xl">
-                    <i class="fas fa-lock text-white text-4xl mb-4"></i>
-                    <h2 class="text-white text-xl font-semibold mb-4">Access Required</h2>
-                    <p class="text-white/70 mb-6">Please use the login link from WhatsApp</p>
-                    <a href="/" class="px-6 py-3 bg-blue-600 text-white rounded-xl">Get Access Link</a>
-                </div>`;
-            return;
-        }
-
-        try {
-            const result = await api.verifyToken(token);
-            if (result.success) {
-                state.session = result.session;
                 
-                // Store session data (not token) for persistence
-                localStorage.setItem('dashboardSession', JSON.stringify(result.session));
-                localStorage.removeItem('dashboardToken'); // Remove old token storage
-                
-                // Clean URL if token was in URL (prevent re-use on refresh)
-                if (urlToken) {
-                    window.history.replaceState({}, document.title, window.location.pathname);
+                // Validate session has required fields
+                if (!state.session.tenantId || !state.session.businessName) {
+                    throw new Error('Invalid session data');
                 }
                 
                 document.getElementById('loadingScreen').classList.add('hidden');
@@ -4260,22 +4224,20 @@
                 await loadStats();
                 switchTab('overview');
                 loadNotifications();
-                showNotification('Dashboard loaded successfully!', 'success');
-            } else {
-                throw new Error(result.error || 'Authentication failed');
+                showNotification('Welcome back, ' + state.session.businessName + '!', 'success');
+                return;
+            } catch (err) {
+                console.log('Failed to restore session, redirecting to login:', err);
+                localStorage.removeItem('dashboardSession');
+                localStorage.removeItem('dashboardToken');
+                window.location.href = '/login.html';
+                return;
             }
-        } catch (error) {
-            console.error('init auth failed', error);
-            document.getElementById('loadingScreen').innerHTML = `
-                <div class="text-center glass-effect p-8 rounded-2xl">
-                    <i class="fas fa-exclamation-triangle text-red-400 text-4xl mb-4"></i>
-                    <h2 class="text-white text-xl font-semibold mb-4">Authentication Error</h2>
-                    <p class="text-white/70 mb-6">${escapeHtml(error.message || 'Unknown error')}</p>
-                    <button onclick="location.reload()" class="px-6 py-3 bg-red-600 text-white rounded-xl">Try Again</button>
-                </div>`;
-            localStorage.removeItem('dashboardToken');
-            localStorage.removeItem('dashboardSession');
         }
+
+        // No session found - redirect to login
+        console.log('No session found, redirecting to login');
+        window.location.href = '/login.html';
     }
 
     // ---------- Event listeners ----------

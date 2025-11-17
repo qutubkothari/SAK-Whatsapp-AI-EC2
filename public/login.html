@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - WhatsApp AI Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .glass-effect { backdrop-filter: blur(10px); background: rgba(255,255,255,0.95); border: 1px solid rgba(255,255,255,0.18); }
+        .input-field { 
+            background: rgba(255,255,255,0.9); 
+            border: 2px solid rgba(102, 126, 234, 0.1);
+            transition: all 0.3s ease;
+        }
+        .input-field:focus { 
+            border-color: #667eea; 
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            outline: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        .animate-fade-in { animation: fadeIn 0.6s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md animate-fade-in">
+        <!-- Logo & Title -->
+        <div class="text-center mb-8">
+            <div class="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl">
+                <i class="fab fa-whatsapp text-green-500 text-4xl"></i>
+            </div>
+            <h1 class="text-white text-3xl font-bold mb-2">WhatsApp AI Dashboard</h1>
+            <p class="text-white/70">Sign in to access your dashboard</p>
+        </div>
+
+        <!-- Login Form -->
+        <div class="glass-effect rounded-2xl shadow-2xl p-8">
+            <form id="loginForm" class="space-y-6">
+                <!-- Phone Number Field -->
+                <div>
+                    <label for="phone" class="block text-gray-700 font-semibold mb-2">
+                        <i class="fas fa-phone mr-2"></i>Phone Number
+                    </label>
+                    <input 
+                        type="tel" 
+                        id="phone" 
+                        name="phone"
+                        class="input-field w-full px-4 py-3 rounded-xl text-gray-800"
+                        placeholder="e.g., 96567709452"
+                        required
+                        autocomplete="tel"
+                    >
+                    <p class="text-gray-500 text-sm mt-1">Enter your registered phone number</p>
+                </div>
+
+                <!-- Password Field -->
+                <div>
+                    <label for="password" class="block text-gray-700 font-semibold mb-2">
+                        <i class="fas fa-lock mr-2"></i>Password
+                    </label>
+                    <div class="relative">
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password"
+                            class="input-field w-full px-4 py-3 rounded-xl text-gray-800 pr-12"
+                            placeholder="Enter your password"
+                            required
+                            autocomplete="current-password"
+                        >
+                        <button 
+                            type="button" 
+                            id="togglePassword"
+                            class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        >
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Error Message -->
+                <div id="errorMessage" class="hidden bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-circle mr-2"></i>
+                        <span id="errorText"></span>
+                    </div>
+                </div>
+
+                <!-- Login Button -->
+                <button 
+                    type="submit" 
+                    id="loginBtn"
+                    class="btn-primary w-full py-3 text-white font-semibold rounded-xl shadow-lg"
+                >
+                    <span id="loginBtnText">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
+                    </span>
+                    <span id="loginBtnLoader" class="hidden">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Signing in...
+                    </span>
+                </button>
+            </form>
+
+            <!-- Footer Links -->
+            <div class="mt-6 text-center">
+                <p class="text-gray-600 text-sm">
+                    Don't have an account? 
+                    <a href="/" class="text-purple-600 font-semibold hover:text-purple-700">Contact Admin</a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Help Text -->
+        <div class="mt-6 text-center">
+            <p class="text-white/70 text-sm">
+                <i class="fas fa-shield-alt mr-1"></i>
+                Secure login powered by WhatsApp AI
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Toggle password visibility
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const passwordInput = document.getElementById('password');
+            const icon = this.querySelector('i');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        });
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+            errorText.textContent = message;
+            errorDiv.classList.remove('hidden');
+            
+            setTimeout(() => {
+                errorDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Handle form submission
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const phone = document.getElementById('phone').value.trim();
+            const password = document.getElementById('password').value;
+            
+            // Validate inputs
+            if (!phone || !password) {
+                showError('Please fill in all fields');
+                return;
+            }
+
+            // Show loading state
+            const loginBtn = document.getElementById('loginBtn');
+            const loginBtnText = document.getElementById('loginBtnText');
+            const loginBtnLoader = document.getElementById('loginBtnLoader');
+            
+            loginBtn.disabled = true;
+            loginBtnText.classList.add('hidden');
+            loginBtnLoader.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ phone, password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Store session
+                    localStorage.setItem('dashboardSession', JSON.stringify(result.session));
+                    
+                    // Redirect to dashboard
+                    window.location.href = '/dashboard.html';
+                } else {
+                    showError(result.error || 'Invalid phone number or password');
+                    loginBtn.disabled = false;
+                    loginBtnText.classList.remove('hidden');
+                    loginBtnLoader.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('An error occurred. Please try again.');
+                loginBtn.disabled = false;
+                loginBtnText.classList.remove('hidden');
+                loginBtnLoader.classList.add('hidden');
+            }
+        });
+
+        // Auto-focus phone field
+        document.getElementById('phone').focus();
+    </script>
+</body>
+</html>
