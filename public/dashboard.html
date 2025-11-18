@@ -2733,11 +2733,21 @@
             document.getElementById('btnConnect').disabled = true;
             document.getElementById('btnConnect').innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Connecting...';
 
+            // Add timeout to prevent hanging
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
             const response = await fetch('/api/whatsapp-web/connect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId })
+                body: JSON.stringify({ tenantId }),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
             const result = await response.json();
             
@@ -2751,7 +2761,10 @@
             }
         } catch (error) {
             console.error('Connect error:', error);
-            showNotification('Error connecting: ' + error.message, 'error');
+            const errorMessage = error.name === 'AbortError' 
+                ? 'Connection timeout - Server is taking too long to respond. Please try again.' 
+                : 'Error connecting: ' + error.message;
+            showNotification(errorMessage, 'error');
         } finally {
             document.getElementById('btnConnect').disabled = false;
             document.getElementById('btnConnect').innerHTML = '<i class="fas fa-plug mr-2"></i>Connect';
@@ -2797,7 +2810,19 @@
         if (!tenantId) return;
 
         try {
-            const response = await fetch(`/api/whatsapp-web/status/${tenantId}`);
+            // Add timeout to fetch request
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+            const response = await fetch(`/api/whatsapp-web/status/${tenantId}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
             const result = await response.json();
 
             const statusDiv = document.getElementById('waWebStatus');
@@ -2887,6 +2912,24 @@
 
         } catch (error) {
             console.error('Status refresh error:', error);
+            
+            // Show user-friendly error message
+            const statusDiv = document.getElementById('waWebStatus');
+            if (statusDiv) {
+                const errorMessage = error.name === 'AbortError' 
+                    ? 'Connection timeout - Server may be busy' 
+                    : 'Unable to check status - Server may be down';
+                    
+                statusDiv.innerHTML = `
+                    <div class="flex items-center space-x-4 bg-red-50 p-3 rounded-lg">
+                        <i class="fas fa-exclamation-triangle text-red-500"></i>
+                        <span class="text-red-700">${errorMessage}</span>
+                        <button onclick="refreshWhatsAppStatus()" class="ml-auto px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
         }
     }
 

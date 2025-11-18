@@ -76,20 +76,32 @@ router.get('/status/:tenantId', async (req, res) => {
     try {
         const { tenantId } = req.params;
 
+        // Set response timeout to prevent hanging
+        req.setTimeout(5000); // 5 second timeout
+
         const result = getClientStatus(tenantId);
 
-        // Also get from database
-        const { data: dbConnection } = await supabase
-            .from('whatsapp_connections')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .single();
+        // Also get from database with timeout
+        const { data: dbConnection, error: dbError } = await Promise.race([
+            supabase
+                .from('whatsapp_connections')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .single(),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Database query timeout')), 3000)
+            )
+        ]);
+
+        if (dbError && dbError.message !== 'Database query timeout') {
+            console.warn('[WA_WEB_API] Database error (non-critical):', dbError);
+        }
 
         return res.json({
             success: true,
             status: result.status,
             hasClient: result.hasClient,
-            connection: dbConnection
+            connection: dbConnection || null
         });
 
     } catch (error) {

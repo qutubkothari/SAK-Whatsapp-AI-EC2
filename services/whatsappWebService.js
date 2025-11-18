@@ -148,8 +148,26 @@ async function initializeClient(tenantId) {
         clients.set(tenantId, client);
         clientStatus.set(tenantId, 'initializing');
 
-        // Initialize client
-        await client.initialize();
+        // Initialize client with timeout to prevent hanging
+        const initTimeout = setTimeout(() => {
+            console.error(`[WA_WEB] Initialization timeout for tenant ${tenantId}`);
+            clientStatus.set(tenantId, 'timeout');
+        }, 30000); // 30 second timeout
+
+        try {
+            // Initialize in background - don't await to prevent API timeout
+            client.initialize().then(() => {
+                clearTimeout(initTimeout);
+                console.log(`[WA_WEB] Client initialization complete for tenant ${tenantId}`);
+            }).catch((err) => {
+                clearTimeout(initTimeout);
+                console.error(`[WA_WEB] Client initialization failed for tenant ${tenantId}:`, err);
+                clientStatus.set(tenantId, 'error');
+            });
+        } catch (err) {
+            clearTimeout(initTimeout);
+            throw err;
+        }
 
         return { success: true, status: 'initializing' };
 
